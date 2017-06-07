@@ -1,5 +1,6 @@
 expr    : added Eof
 added   : timesed (Pls|Sub timesed)*
 timesed : divided (Mul divided)*
-divided : num (Div num)*
-num     : -?digit | OpnBrace added ClsBrace
+divided : signed (Div signed)*
+signed  : -?num
+num     : digit | OpnBrace added ClsBrace

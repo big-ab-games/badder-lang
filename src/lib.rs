@@ -115,19 +115,34 @@ impl<'a> Lexer<'a> {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+enum Ast {
+    Num(Token),
+    BinOp(Token, Box<Ast>, Box<Ast>),
+    LeftUnaryOp(Token, Box<Ast>),
+}
+
+impl Ast {
+    pub fn bin_op<A: Into<Box<Ast>>>(token: Token, left: A, right: A) -> Ast {
+        Ast::BinOp(token, left.into(), right.into())
+    }
+
+    pub fn left_unary_op<A: Into<Box<Ast>>>(token: Token, node: A) -> Ast {
+        Ast::LeftUnaryOp(token, node.into())
+    }
+}
+
 #[derive(Debug)]
-struct Interpreter<'a> {
-    code: &'a str,
+struct Parser<'a> {
     lexer: Lexer<'a>,
     current_token: Token,
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(code: &'a str) -> Res<Interpreter<'a>> {
+impl<'a> Parser<'a> {
+    pub fn new(code: &'a str) -> Res<Parser<'a>> {
         let mut lexer = Lexer::new(code);
         let first = lexer.next_token()?;
-        Ok(Interpreter {
-            code,
+        Ok(Parser {
             lexer,
             current_token: first,
         })
@@ -152,7 +167,7 @@ impl<'a> Interpreter<'a> {
                 })
                 .collect::<Vec<String>>()
                 .join(",");
-            Err(format!("Interpreter: Expected {} got {:?}", expected, self.current_token))
+            Err(format!("Parser: Expected {} got {:?}", expected, self.current_token))
         }
     }
 
@@ -165,47 +180,54 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn num(&mut self) -> Res<Int> {
+    fn num(&mut self) -> Res<Ast> {
         if self.current_token == OpnBrace {
             return self.braced();
         }
-        Ok(match self.consume(&[Sub, Num(0)])? {
-            Sub => -self.num()?,
-            Num(x) => x,
+        Ok(match self.consume(&[Num(0)])? {
+            n @ Num(_) => Ast::Num(n),
             _ => unreachable!(),
         })
     }
 
-    fn divided(&mut self) -> Res<Int> {
-        let mut out = self.num()?;
+    fn signed(&mut self) -> Res<Ast> {
+        if self.current_token == Sub {
+            self.next_token()?;
+            return Ok(Ast::left_unary_op(Sub, self.num()?));
+        }
+        self.num()
+    }
+
+    fn divided(&mut self) -> Res<Ast> {
+        let mut out = self.signed()?;
         while self.consume_maybe(&[Div])?.is_some() {
-            out /= self.num()?;
+            out = Ast::bin_op(Div, out, self.signed()?);
         }
         Ok(out)
     }
 
-    fn timesed(&mut self) -> Res<Int> {
+    fn timesed(&mut self) -> Res<Ast> {
         let mut out = self.divided()?;
         while self.consume_maybe(&[Mul])?.is_some() {
-            out *= self.divided()?;
+            out = Ast::bin_op(Mul, out, self.divided()?);
         }
         Ok(out)
     }
 
-    fn added(&mut self) -> Res<Int> {
+    fn added(&mut self) -> Res<Ast> {
         let mut out = self.timesed()?;
         while let Some(token) = self.consume_maybe(&[Pls, Sub])? {
             if token == Pls {
-                out += self.timesed()?;
+                out = Ast::bin_op(Pls, out, self.timesed()?);
             }
-            else { // Sub
-                out -= self.timesed()?;
+            else {
+                out = Ast::bin_op(Sub, out, self.timesed()?);
             }
         }
         Ok(out)
     }
 
-    fn braced(&mut self) -> Res<Int> {
+    fn braced(&mut self) -> Res<Ast> {
         if self.consume_maybe(&[OpnBrace])?.is_some() {
             let out = self.added()?;
             self.consume(&[ClsBrace])?;
@@ -214,16 +236,31 @@ impl<'a> Interpreter<'a> {
         self.added()
     }
 
-    pub fn expr(&mut self) -> Res<Int> {
+    pub fn parse(&mut self) -> Res<Ast> {
         let out = self.added()?;
         self.consume(&[Eof])?;
         Ok(out)
     }
 }
 
+fn interpret(ast: Ast) -> Res<Int> {
+    match ast {
+        Ast::Num(Num(x)) => Ok(x),
+        Ast::BinOp(token, left, right) => match token {
+            Pls => Ok(interpret(*left)? + interpret(*right)?),
+            Sub => Ok(interpret(*left)? - interpret(*right)?),
+            Mul => Ok(interpret(*left)? * interpret(*right)?),
+            Div => Ok(interpret(*left)? / interpret(*right)?),
+            _ => Err(format!("Interpreter: Unexpected BinOp token {:?}", token)),
+        },
+        Ast::LeftUnaryOp(Sub, val) => Ok(-interpret(*val)?),
+        _ => Err(format!("Interpreter: Unexpected Ast {:?}", ast)),
+    }
+}
+
 
 pub fn eval(code: &str) -> Res<Int> {
-    Interpreter::new(code)?.expr()
+    interpret(Parser::new(code)?.parse()?)
 }
 
 
@@ -240,6 +277,20 @@ mod tests {
     #[test]
     fn negative() {
         assert_eq!(eval("-235"), Ok(-235));
+    }
+
+    #[test]
+    fn double_negative_err() {
+        let out = eval("--235");
+        assert!(out.is_err(), format!("Unexpected {:?}", out));
+        if let Err(reason) = out {
+            assert!(reason.contains("-"), format!("Unexpected reason {}", reason));
+        }
+    }
+
+    #[test]
+    fn negative_brace() {
+        assert_eq!(eval("-(-45)"), Ok(45));
     }
 
     #[test]
