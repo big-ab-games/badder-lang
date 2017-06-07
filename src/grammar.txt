@@ -1,6 +1,14 @@
-expr    : added Eof
+program : line+ Eof
+line    : added Eol|Eof
+        | var id Eol|Eof
+        | var id = added Eol|Eof
+        | id = added Eol|Eof
+        | Eol|Eof
 added   : timesed (Pls|Sub timesed)*
 timesed : divided (Mul divided)*
 divided : signed (Div signed)*
 signed  : -?num
-num     : digit | OpnBrace added ClsBrace
+num     : digit
+        | id
+        | OpnBrace added ClsBrace
+id      : non-digit(alphanumeric,_)*

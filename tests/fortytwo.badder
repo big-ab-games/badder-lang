@@ -1,0 +1,9 @@
+# six is an identifier, implicitly = 0 if not specified
+var six
+
+var seven = 7
+
+six = ((six + 4)) / 2
+six = six * 3 + 5 - 20 / 4  # bidmas precidence
+
+six * seven
