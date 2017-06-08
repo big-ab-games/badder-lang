@@ -124,8 +124,8 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
-    fn added_with_left(&mut self, left: Ast) -> Res<Ast> {
-        let mut out = left;
+    fn added(&mut self) -> Res<Ast> {
+        let mut out = self.timesed()?;
         while let Some(token) = self.consume_any_maybe(&[Pls, Sub])? {
             if token == Pls {
                 out = Ast::bin_op(Pls, out, self.timesed()?);
@@ -135,11 +135,6 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(out)
-    }
-
-    fn added(&mut self) -> Res<Ast> {
-        let left = self.timesed()?;
-        self.added_with_left(left)
     }
 
     fn braced(&mut self) -> Res<Ast> {
@@ -168,12 +163,21 @@ impl<'a> Parser<'a> {
         }
         // id = expr
         if let Id(_) = self.current_token {
-            if self.lexer.peek()? == Ass {
+            let peek = self.lexer.peek()?;
+            if peek == Ass {
                 let id = self.consume(Id("identifier".into()))?;
                 self.consume(Ass)?;
                 let expr = self.added()?;
                 self.consume_any(&[Eol, Eof])?;
                 return Ok(Ast::Reassign(id, expr.into()));
+            }
+            if let OpAss(op) = peek {
+                let id = self.consume(Id("identifier".into()))?;
+                self.next_token()?;
+                let expr = self.added()?;
+                self.consume_any(&[Eol, Eof])?;
+                // v *= expr  ->  v = v * expr
+                return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
             }
         }
         // expr

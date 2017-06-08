@@ -1,6 +1,6 @@
 use std::str::Chars;
-use std::fmt;
 use std::iter::Peekable;
+use std::fmt;
 use super::{Res, Int};
 
 #[derive(PartialEq, Eq, Clone, Hash)]
@@ -16,6 +16,7 @@ pub enum Token {
     OpnBrace,
     ClsBrace,
     Ass,
+    OpAss(Box<Token>),
 
     // End of things
     Eol,
@@ -43,6 +44,7 @@ impl fmt::Debug for Token {
             OpnBrace => write!(f, "("),
             ClsBrace => write!(f, ")"),
             Ass => write!(f, "="),
+            OpAss(ref op) => write!(f, "{:?}=", *op),
             Eol => write!(f, "Eol"),
             Eof => write!(f, "Eof"),
             Var => write!(f, "var"),
@@ -72,6 +74,13 @@ impl Token {
         }
     }
 
+    fn is_valid_for_op_ass(&self) -> bool {
+        match *self {
+            Pls|Sub|Mul|Div => true,
+            _ => false,
+        }
+    }
+
     pub fn matches(&self, token: &Token) -> bool {
         match *self {
             Num(_) => if let Num(_) = *token { true } else { false },
@@ -84,13 +93,13 @@ impl Token {
         match *self {
             Num(x) => format!("number {}", x),
             Id(ref id) => format!("id `{}`", id),
-            Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass => format!("operator {:?}", self),
+            Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass|OpAss(_) => format!("operator {:?}", self),
             _ => format!("keyword `{:?}`", self),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     current_char: Option<char>,
@@ -129,6 +138,8 @@ impl<'a> Lexer<'a> {
         self.current_char
     }
 
+    /// Attempts to return next token without advancing, has limitations
+    /// Nums & Ids with only contain their first character
     pub fn peek(&mut self) -> Res<Token> {
         while let Some(c) = self.current_char {
             if junkspace(c) {
@@ -159,6 +170,11 @@ impl<'a> Lexer<'a> {
             }
 
             if let Some(token) = Token::parse(c) {
+                if token.is_valid_for_op_ass() {
+                    if let Some(&'=') = self.chars.peek() {
+                        return Ok(OpAss(token.into()));
+                    }
+                }
                 return Ok(token);
             }
 
@@ -205,12 +221,11 @@ impl<'a> Lexer<'a> {
                 return Ok(Token::parse_id(id));
             }
 
-            if let Some(token) = Token::parse(c) {
+            self.next_char();
+            if let OpAss(_) = peek {
                 self.next_char();
-                return Ok(token);
             }
-
-            return Err(format!("Lexer: Unexpected char: {}", c));
+            return Ok(peek);
         }
 
         Ok(Token::Eof)

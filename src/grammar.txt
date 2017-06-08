@@ -1,8 +1,9 @@
 program : line+ Eof
 line    : added Eol|Eof
         | var id Eol|Eof
-        | var id = added Eol|Eof
-        | id = added Eol|Eof
+        | var id Ass added Eol|Eof
+        | id Ass added Eol|Eof
+        | id (Pls|Sub|Mul|Div)Ass added Eol|Eof
         | Eol|Eof
 added   : timesed (Pls|Sub timesed)*
 timesed : divided (Mul divided)*

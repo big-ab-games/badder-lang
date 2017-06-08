@@ -4,7 +4,7 @@ var six
 var seven = 700
 
 six = ((six + 4)) / 2
-six = six * 3 + 5 - 20 / 4  # bidmas precidence
+six *= 3 + 5 - 20 / 4  # bidmas precidence
 
 var seven = 7 # assignment shadowing
 
