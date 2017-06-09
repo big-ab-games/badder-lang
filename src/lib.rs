@@ -34,7 +34,10 @@ impl Interpreter {
                 Pls => Ok(self.interpret(*left)? + self.interpret(*right)?),
                 Sub => Ok(self.interpret(*left)? - self.interpret(*right)?),
                 Mul => Ok(self.interpret(*left)? * self.interpret(*right)?),
-                Div => Ok(self.interpret(*left)? / self.interpret(*right)?),
+                Div => match self.interpret(*right)? {
+                    0 => Err("Interpreter: cannot divide by zero".into()),
+                    divisor => Ok(self.interpret(*left)? / divisor)
+                },
                 _ => Err(format!("Interpreter: Unexpected BinOp token {:?}", token)),
             },
             Ast::LeftUnaryOp(Sub, val) => Ok(-self.interpret(*val)?),
@@ -274,5 +277,10 @@ mod numerics {
     #[test]
     fn redundant_brackets() {
         assert_program!("7 + (((3 + 2)))" => 12);
+    }
+
+    #[test]
+    fn div_by_0_err() {
+        assert_program!("1/0" =>X "divide by zero");
     }
 }
