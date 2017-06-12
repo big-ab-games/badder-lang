@@ -1,0 +1,20 @@
+program : line+ Eof
+line    : ored Eol|Eof
+        | var id Eol|Eof
+        | var id Ass ored Eol|Eof
+        | id Ass ored Eol|Eof
+        | id (Pls|Sub|Mul|Div)Ass ored Eol|Eof
+        | Eol|Eof
+
+ored    : anded (Or anded)*
+anded   : noted (And noted)*
+noted   : not ised
+ised    : added (is not? added)?
+added   : timesed (Pls|Sub timesed)*
+timesed : divided (Mul divided)*
+divided : signed (Div signed)*
+signed  : -?num
+num     : digit
+        | id
+        | OpnBrace noted ClsBrace
+id      : non-digit(alphanumeric,_)*

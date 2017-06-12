@@ -137,13 +137,52 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
+    fn ised(&mut self) -> Res<Ast> {
+        let mut out = self.added()?;
+        if self.consume_maybe(Is)?.is_some() {
+            if self.consume_maybe(Not)?.is_some() {
+                let is = Ast::bin_op(Is, out, self.added()?);
+                out = Ast::left_unary_op(Not, is);
+            }
+            else {
+                out = Ast::bin_op(Is, out, self.added()?);
+            }
+        }
+        Ok(out)
+    }
+
+    fn noted(&mut self) -> Res<Ast> {
+        if self.consume_maybe(Not)?.is_some() {
+            Ok(Ast::left_unary_op(Not, self.ised()?))
+        }
+        else {
+            self.ised()
+        }
+    }
+
+    fn anded(&mut self) -> Res<Ast> {
+        let mut out = self.noted()?;
+        while self.consume_maybe(And)?.is_some() {
+            out = Ast::bin_op(And, out, self.noted()?);
+        }
+        Ok(out)
+    }
+
+    fn ored(&mut self) -> Res<Ast> {
+        let mut out = self.anded()?;
+        while self.consume_maybe(Or)?.is_some() {
+            out = Ast::bin_op(Or, out, self.anded()?);
+        }
+        Ok(out)
+    }
+
     fn braced(&mut self) -> Res<Ast> {
         if self.consume_maybe(OpnBrace)?.is_some() {
-            let out = self.added()?;
+            let out = self.noted()?;
             self.consume(ClsBrace)?;
             return Ok(out);
         }
-        self.added()
+        self.noted()
     }
 
     fn line(&mut self) -> Res<Ast> {
@@ -157,7 +196,7 @@ impl<'a> Parser<'a> {
                 self.consume_any(&[Ass, Eol, Eof])?;
                 return Ok(Ast::Assign(id, Ast::Num(Num(0)).into()));
             }
-            let expr = self.added()?;
+            let expr = self.ored()?;
             self.consume_any(&[Eol, Eof])?;
             return Ok(Ast::Assign(id, expr.into()));
         }
@@ -167,14 +206,14 @@ impl<'a> Parser<'a> {
             if peek == Ass {
                 let id = self.consume(Id("identifier".into()))?;
                 self.consume(Ass)?;
-                let expr = self.added()?;
+                let expr = self.ored()?;
                 self.consume_any(&[Eol, Eof])?;
                 return Ok(Ast::Reassign(id, expr.into()));
             }
             if let OpAss(op) = peek {
                 let id = self.consume(Id("identifier".into()))?;
                 self.next_token()?;
-                let expr = self.added()?;
+                let expr = self.ored()?;
                 self.consume_any(&[Eol, Eof])?;
                 // v *= expr  ->  v = v * expr
                 return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
@@ -182,7 +221,7 @@ impl<'a> Parser<'a> {
         }
         // expr
         if self.current_token != Eof {
-            let out = self.added()?;
+            let out = self.ored()?;
             self.consume_any(&[Eol, Eof])?;
             return Ok(out);
         }

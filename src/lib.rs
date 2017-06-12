@@ -35,12 +35,28 @@ impl Interpreter {
                 Sub => Ok(self.interpret(*left)? - self.interpret(*right)?),
                 Mul => Ok(self.interpret(*left)? * self.interpret(*right)?),
                 Div => match self.interpret(*right)? {
-                    0 => Err("Interpreter: cannot divide by zero".into()),
+                    0 => Err("Interpreter: Cannot divide by zero".into()),
                     divisor => Ok(self.interpret(*left)? / divisor)
                 },
-                _ => Err(format!("Interpreter: Unexpected BinOp token {:?}", token)),
+                And => match self.interpret(*left)? {
+                    0 => Ok(0),
+                    _ => self.interpret(*right)
+                },
+                Or => match self.interpret(*left)? {
+                    0 => self.interpret(*right),
+                    x => Ok(x)
+                },
+                Is => Ok(match self.interpret(*left)? == self.interpret(*right)? {
+                    true => 1,
+                    false => 0,
+                }),
+                _ => Err(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
             },
             Ast::LeftUnaryOp(Sub, val) => Ok(-self.interpret(*val)?),
+            Ast::LeftUnaryOp(Not, val) => Ok(match self.interpret(*val)? {
+                0 => 1,
+                _ => 0,
+            }),
             Ast::Assign(id, expr) => {
                 let v = self.interpret(*expr)?;
                 self.vars.insert(id.clone(), v);
@@ -54,8 +70,7 @@ impl Interpreter {
                     Ok(v)
                 }
                 else {
-                    Err(format!("{}, did you maen `var {:?} =`?",
-                        self.unknown_id_err(&id), id))
+                    Err(format!("{}, did you mean `var {:?} =`?", self.unknown_id_err(&id), id))
                 }
             },
             Ast::Refer(id) => self.vars.get(&id).cloned()
@@ -116,6 +131,22 @@ mod util {
             )+
         };
     }
+}
+
+#[cfg(test)]
+mod simple_scope {
+    // use super::*;
+
+    // #[test]
+    // fn if_flow() {
+    //     assert_program!("var x = 200";
+    //                     "var y = 100";
+    //                     "if 1:";
+    //                     "    x = 123";
+    //                     "if 0:";
+    //                     "    y = 123";
+    //                     "x + y" => 223);
+    // }
 }
 
 #[cfg(test)]
@@ -255,7 +286,7 @@ mod numerics {
     }
 
     #[test]
-    fn precidence() {
+    fn precedence() {
         assert_program!("3 + 6 / 2 * 7 + 1" => 25);
     }
 
@@ -282,5 +313,45 @@ mod numerics {
     #[test]
     fn div_by_0_err() {
         assert_program!("1/0" =>X "divide by zero");
+    }
+
+    #[test]
+    fn is() {
+        assert_program!("1 is 2" => 0);
+        assert_program!("2 is 1 + 1" => 1);
+    }
+
+    #[test]
+    fn is_not() {
+        assert_program!("3 is not 3" => 0);
+        assert_program!("3 is not 4" => 1);
+    }
+
+    #[test]
+    fn not() {
+        assert_program!("not 1" => 0);
+        assert_program!("not 0" => 1);
+        assert_program!("not 5 is 4" => 1);
+        assert_program!("not 5 or 4 and 0" => 0);
+    }
+
+    #[test]
+    fn multi_is_err() {
+        assert_program!("2 is 2 is 1" =>X "is");
+    }
+
+    #[test]
+    fn and() {
+        assert_program!("1 + 2 and 2 + 3 and 3 + 4" => 7);
+        assert_program!("not 1 - 1 and not 2 + 3" => 0);
+        assert_program!("1 + 2 and 7 is 2 and 3 + 4" => 0);
+    }
+
+    #[test]
+    fn or() {
+        assert_program!("1 + 2 or 2 + 3 or 3 + 4" => 3);
+        assert_program!("0 or 1 and 0 or 0" => 0);
+        assert_program!("0 or 0 or 123" => 123);
+        assert_program!("0 or 234 or 0" => 234);
     }
 }

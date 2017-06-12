@@ -4,7 +4,7 @@ var six
 var seven = 700
 
 six = ((six + 4)) / 2
-six *= 3 + 5 - 20 / 4  # bidmas precidence
+six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
 var seven = 7 # assignment shadowing
 

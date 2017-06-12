@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-RUST_BACKTRACE=full nodemon -e rs,badder --ignore 'target/*' --exec cargo test "$@"
+RUST_BACKTRACE=0 nodemon -e rs,badder --ignore 'target/*' --exec cargo test "$@"

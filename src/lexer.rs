@@ -24,11 +24,13 @@ pub enum Token {
 
     /// Keywords
     Var,
-    // Def,
-    // If,
-    // Else,
-    // And,
-    // Not
+    Def,
+    If,
+    Else,
+    And,
+    Or,
+    Not,
+    Is,
 }
 
 use lexer::Token::*;
@@ -48,6 +50,13 @@ impl fmt::Debug for Token {
             Eol => write!(f, "Eol"),
             Eof => write!(f, "Eof"),
             Var => write!(f, "var"),
+            If => write!(f, "if"),
+            Else => write!(f, "else"),
+            Not => write!(f, "not"),
+            Is => write!(f, "is"),
+            Def => write!(f, "def"),
+            And => write!(f, "and"),
+            Or => write!(f, "or"),
             Id(ref id) => write!(f, "{}", id),
         }
     }
@@ -70,6 +79,13 @@ impl Token {
     pub fn parse_id(id: String) -> Token {
         match id.as_str() {
             "var" => Var,
+            "if" => If,
+            "else" => Else,
+            "not" => Not,
+            "is" => Is,
+            "def" => Def,
+            "and" => And,
+            "or" => Or,
             _ => Id(id),
         }
     }
