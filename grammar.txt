@@ -16,8 +16,7 @@ inversed: not compared
 compared: added (is not? added)?
         | added (>|<|>=|<= added)?
 added   : timesed (Pls|Sub timesed)*
-timesed : divided (Mul|Mod divided)*
-divided : signed (Div signed)*
+multied : signed (Mul|Mod|Div signed)*
 signed  : -?num
 num     : digit
         | id

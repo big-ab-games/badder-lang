@@ -168,30 +168,22 @@ impl<'a> Parser<'a> {
         self.num()
     }
 
-    fn divided(&mut self) -> Res<Ast> {
+    fn multied(&mut self) -> Res<Ast> {
         let mut out = self.signed()?;
-        while self.consume_maybe(Div)?.is_some() {
-            out = Ast::bin_op(Div, out, self.signed()?);
-        }
-        Ok(out)
-    }
-
-    fn timesed(&mut self) -> Res<Ast> {
-        let mut out = self.divided()?;
-        while let Some(token) = self.consume_any_maybe(&[Mul, Mod])? {
-            out = Ast::bin_op(token, out, self.divided()?);
+        while let Some(token) = self.consume_any_maybe(&[Mul, Mod, Div])? {
+            out = Ast::bin_op(token, out, self.signed()?);
         }
         Ok(out)
     }
 
     fn added(&mut self) -> Res<Ast> {
-        let mut out = self.timesed()?;
+        let mut out = self.multied()?;
         while let Some(token) = self.consume_any_maybe(&[Pls, Sub])? {
             if token == Pls {
-                out = Ast::bin_op(Pls, out, self.timesed()?);
+                out = Ast::bin_op(Pls, out, self.multied()?);
             }
             else {
-                out = Ast::bin_op(Sub, out, self.timesed()?);
+                out = Ast::bin_op(Sub, out, self.multied()?);
             }
         }
         Ok(out)
