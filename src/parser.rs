@@ -178,8 +178,8 @@ impl<'a> Parser<'a> {
 
     fn timesed(&mut self) -> Res<Ast> {
         let mut out = self.divided()?;
-        while self.consume_maybe(Mul)?.is_some() {
-            out = Ast::bin_op(Mul, out, self.divided()?);
+        while let Some(token) = self.consume_any_maybe(&[Mul, Mod])? {
+            out = Ast::bin_op(token, out, self.divided()?);
         }
         Ok(out)
     }

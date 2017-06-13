@@ -21,6 +21,7 @@ pub enum Token {
     GtEq,
     Lt,
     LtEq,
+    Mod,
 
     // End of things
     Eol,
@@ -61,6 +62,7 @@ impl fmt::Debug for Token {
             GtEq => write!(f, ">="),
             Lt => write!(f, "<"),
             LtEq => write!(f, "<="),
+            Mod => write!(f, "%"),
             OpAss(ref op) => write!(f, "{:?}=", *op),
             Eol => write!(f, "Eol"),
             Eof => write!(f, "Eof"),
@@ -96,6 +98,7 @@ impl Token {
             '=' => Some(Ass),
             '>' => Some(Gt),
             '<' => Some(Lt),
+            '%' => Some(Mod),
             _ => None,
         }
     }

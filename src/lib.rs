@@ -64,6 +64,7 @@ impl Interpreter {
                 Pls => Ok(self.interpret(*left)? + self.interpret(*right)?),
                 Sub => Ok(self.interpret(*left)? - self.interpret(*right)?),
                 Mul => Ok(self.interpret(*left)? * self.interpret(*right)?),
+                Mod => Ok(self.interpret(*left)? % self.interpret(*right)?),
                 Div => match self.interpret(*right)? {
                     0 => Err("Interpreter: Cannot divide by zero".into()),
                     divisor => Ok(self.interpret(*left)? / divisor)
@@ -304,6 +305,19 @@ mod loops {
                         "while x < 50";
                         "    x *= 3";
                         "x" => 81);
+    }
+
+    #[test]
+    fn while_continue_break() {
+        assert_program!("var x";
+                        "while x < 50";
+                        "    x += 30";
+                        "    if x >= 50";
+                        "        break";
+                        "    if x % 2 is 1";
+                        "        continue";
+                        "    x -= 31";
+                        "x" => 59);
     }
 }
 
@@ -660,5 +674,13 @@ mod numerics {
     #[test]
     fn div_by_0_err() {
         assert_program!("1/0" =>X "divide by zero");
+    }
+
+    #[test]
+    fn modulus() {
+        assert_program!("52 % 2" => 0);
+        assert_program!("53 % 2" => 1);
+        assert_program!("53 % 50" => 3);
+        assert_program!("14023 % 50" => 23);
     }
 }

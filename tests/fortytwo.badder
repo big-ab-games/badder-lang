@@ -1,20 +1,28 @@
 # six is an identifier, implicitly = 0 if not specified
 var six
 
-var seven = 700
+var seven = 500
 
 six = ((six + 4)) / 2
 six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
-if seven is 70
-    seven /= 10
-else if seven is 700
-    seven /= 100
 
-if seven is 7
+while seven > 7
+    # divide by 10 until smaller than 7
+    seven /= 10
+
+loop
+    # add 1 until its 7
+    if seven % 8 is not 7
+        seven = seven + 1
+        continue
+    break
+
+if seven is not 7
+    var confused = 1 # seven should be 7 by now
+else
     var seven = 11 # assignment shadowing in this scope
     seven *= 2
-else
-    var confused = 1 # seven should be 7 by now
+
 
 six * seven
