@@ -17,6 +17,10 @@ pub enum Token {
     ClsBrace,
     Ass,
     OpAss(Box<Token>),
+    Gt,
+    GtEq,
+    Lt,
+    LtEq,
 
     // End of things
     Eol,
@@ -47,6 +51,10 @@ impl fmt::Debug for Token {
             OpnBrace => write!(f, "("),
             ClsBrace => write!(f, ")"),
             Ass => write!(f, "="),
+            Gt => write!(f, ">"),
+            GtEq => write!(f, ">="),
+            Lt => write!(f, "<"),
+            LtEq => write!(f, "<="),
             OpAss(ref op) => write!(f, "{:?}=", *op),
             Eol => write!(f, "Eol"),
             Eof => write!(f, "Eof"),
@@ -74,6 +82,8 @@ impl Token {
             '(' => Some(OpnBrace),
             ')' => Some(ClsBrace),
             '=' => Some(Ass),
+            '>' => Some(Gt),
+            '<' => Some(Lt),
             _ => None,
         }
     }
@@ -110,9 +120,10 @@ impl Token {
 
     pub fn long_debug(&self) -> String {
         match *self {
-            Num(x) => format!("number {}", x),
+            Num(x) => format!("number `{}`", x),
             Id(ref id) => format!("id `{}`", id),
-            Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass|OpAss(_) => format!("operator {:?}", self),
+            Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass|OpAss(_)|Gt|Lt|GtEq|LtEq
+                => format!("operator `{:?}`", self),
             Indent(_) => format!("indent {:?}", self),
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
@@ -209,6 +220,16 @@ impl<'a> Lexer<'a> {
             }
 
             if let Some(token) = Token::parse(c) {
+                if token == Gt {
+                    if let Some(&'=') = self.chars.peek() {
+                        return Ok(GtEq);
+                    }
+                }
+                if token == Lt {
+                    if let Some(&'=') = self.chars.peek() {
+                        return Ok(LtEq);
+                    }
+                }
                 if token.is_valid_for_op_ass() {
                     if let Some(&'=') = self.chars.peek() {
                         return Ok(OpAss(token.into()));
@@ -296,6 +317,9 @@ impl<'a> Lexer<'a> {
 
             self.next_char();
             if let OpAss(_) = peek {
+                self.next_char();
+            }
+            if peek == GtEq || peek == LtEq {
                 self.next_char();
             }
             return Ok(peek);

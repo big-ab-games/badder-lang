@@ -9,9 +9,10 @@ line    : indent* expr Eol|Eof
 
 expr    : ored
 ored    : anded (Or anded)*
-anded   : noted (And noted)*
-noted   : not ised
-ised    : added (is not? added)?
+anded   : inversed (And inversed)*
+inversed: not compared
+compared: added (is not? added)?
+        | added (>|<|>=|<= added)?
 added   : timesed (Pls|Sub timesed)*
 timesed : divided (Mul divided)*
 divided : signed (Div signed)*

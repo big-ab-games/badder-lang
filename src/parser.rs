@@ -187,7 +187,7 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
-    fn ised(&mut self) -> Res<Ast> {
+    fn compared(&mut self) -> Res<Ast> {
         let mut out = self.added()?;
         if self.consume_maybe(Is)?.is_some() {
             if self.consume_maybe(Not)?.is_some() {
@@ -198,22 +198,25 @@ impl<'a> Parser<'a> {
                 out = Ast::bin_op(Is, out, self.added()?);
             }
         }
+        else if let Some(token) = self.consume_any_maybe(&[Gt, Lt, GtEq, LtEq])? {
+            out = Ast::bin_op(token, out, self.added()?);
+        }
         Ok(out)
     }
 
-    fn noted(&mut self) -> Res<Ast> {
+    fn inversed(&mut self) -> Res<Ast> {
         if self.consume_maybe(Not)?.is_some() {
-            Ok(Ast::left_unary_op(Not, self.ised()?))
+            Ok(Ast::left_unary_op(Not, self.compared()?))
         }
         else {
-            self.ised()
+            self.compared()
         }
     }
 
     fn anded(&mut self) -> Res<Ast> {
-        let mut out = self.noted()?;
+        let mut out = self.inversed()?;
         while self.consume_maybe(And)?.is_some() {
-            out = Ast::bin_op(And, out, self.noted()?);
+            out = Ast::bin_op(And, out, self.inversed()?);
         }
         Ok(out)
     }
@@ -291,7 +294,8 @@ impl<'a> Parser<'a> {
                 _ => false
             }, true)?;
             if block.is_none() {
-                return Err("Parser: Expected line after `if` with exactly +1 indent".into());
+                return Err(format!("Parser: {} Expected line after `if,else` with exactly +1 indent",
+                    self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
             }
             // else will be in unused_lines as they would mark the end of an if block
             if let Some(line) = self.unused_lines.pop() {

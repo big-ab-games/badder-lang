@@ -17,6 +17,14 @@ pub struct Interpreter {
     stack: Vec<HashMap<lexer::Token, Int>>,
 }
 
+#[inline]
+fn bool_to_num(b: bool) -> Int {
+    match b {
+        true => 1,
+        false => 0,
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
@@ -68,10 +76,11 @@ impl Interpreter {
                     0 => self.interpret(*right),
                     x => Ok(x)
                 },
-                Is => Ok(match self.interpret(*left)? == self.interpret(*right)? {
-                    true => 1,
-                    false => 0,
-                }),
+                Is => Ok(bool_to_num(self.interpret(*left)? == self.interpret(*right)?)),
+                Gt => Ok(bool_to_num(self.interpret(*left)? > self.interpret(*right)?)),
+                Lt => Ok(bool_to_num(self.interpret(*left)? < self.interpret(*right)?)),
+                GtEq => Ok(bool_to_num(self.interpret(*left)? >= self.interpret(*right)?)),
+                LtEq => Ok(bool_to_num(self.interpret(*left)? <= self.interpret(*right)?)),
                 _ => Err(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
             },
             Ast::LeftUnaryOp(Sub, val) => Ok(-self.interpret(*val)?),
@@ -197,17 +206,22 @@ mod util {
     }
 }
 
-#[cfg(test)]
-mod scope {
-    use super::*;
+// #[cfg(test)]
+// mod loops {
+//     use super::*;
+//
+//     #[test]
+//     fn loop() {
+//         assert_program!("var x = 1";
+//                         "loop:";
+//                         "    x *= 2";
+//                         "    if x "
+//     }
+// }
 
-    // #[test]
-    // fn loop() {
-    //     assert_program!("var x = 1";
-    //                     "loop:";
-    //                     "    x *= 2";
-    //                     "    if
-    // }
+#[cfg(test)]
+mod if_scope {
+    use super::*;
 
     #[test]
     fn if_flow() {
@@ -421,8 +435,10 @@ mod booleans {
     }
 
     #[test]
-    fn multi_is_err() {
+    fn multi_compare_err() {
         assert_program!("2 is 2 is 1" =>X "is");
+        assert_program!("2 > 2 < 1" =>X "<");
+        assert_program!("2 > 2 is 0" =>X "is");
     }
 
     #[test]
@@ -438,6 +454,38 @@ mod booleans {
         assert_program!("0 or 1 and 0 or 0" => 0);
         assert_program!("0 or 0 or 123" => 123);
         assert_program!("0 or 234 or 0" => 234);
+    }
+
+    #[test]
+    fn greater_than() {
+        assert_program!("1 > 1" => 0);
+        assert_program!("1 > 2" => 0);
+        assert_program!("1 > 0" => 1);
+        assert_program!("1 > -2" => 1);
+    }
+
+    #[test]
+    fn less_than() {
+        assert_program!("1 < 1" => 0);
+        assert_program!("1 < 2" => 1);
+        assert_program!("1 < 0" => 0);
+        assert_program!("1 < -2" => 0);
+    }
+
+    #[test]
+    fn greater_than_or_equal_to() {
+        assert_program!("1 >= 1" => 1);
+        assert_program!("1 >= 2" => 0);
+        assert_program!("1 >= 0" => 1);
+        assert_program!("1 >= -2" => 1);
+    }
+
+    #[test]
+    fn less_than_or_equal_to() {
+        assert_program!("1 <= 1" => 1);
+        assert_program!("1 <= 2" => 1);
+        assert_program!("1 <= 0" => 0);
+        assert_program!("1 <= -2" => 0);
     }
 }
 
