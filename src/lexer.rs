@@ -36,6 +36,12 @@ pub enum Token {
     Not,
     Is,
     Indent(usize),
+    Loop,
+    While,
+    For,
+    In,
+    Break,
+    Continue,
 }
 
 use lexer::Token::*;
@@ -66,6 +72,12 @@ impl fmt::Debug for Token {
             Def => write!(f, "def"),
             And => write!(f, "and"),
             Or => write!(f, "or"),
+            Loop => write!(f, "loop"),
+            While => write!(f, "while"),
+            For => write!(f, "for"),
+            In => write!(f, "in"),
+            Break => write!(f, "break"),
+            Continue => write!(f, "continue"),
             Indent(i) => write!(f, "'    '*{}", i),
             Id(ref id) => write!(f, "{}", id),
         }
@@ -98,6 +110,12 @@ impl Token {
             "def" => Def,
             "and" => And,
             "or" => Or,
+            "loop" => Loop,
+            "while" => While,
+            "for" => For,
+            "in" => In,
+            "break" => Break,
+            "continue" => Continue,
             _ => Id(id),
         }
     }

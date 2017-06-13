@@ -124,6 +124,51 @@ impl Interpreter {
                     0
                 }
             }),
+            Ast::While(expr, block) => {
+                if self.interpret(*expr.clone())? == 0 {
+                    return Ok(0);
+                }
+                let last_idx = self.stack.len() - 1;
+                let loop_token = Id("#loop".into());
+                self.stack[last_idx].insert(loop_token.clone(), 1);
+                while let Some(&1) = self.stack[last_idx].get(&loop_token) {
+                    match self.interpret(*block.clone()) {
+                        Err(err) => match err.as_str() {
+                            "#loop.break" => break,
+                            "#loop.continue" => continue,
+                            err => return Err(err.into()),
+                        },
+                        Ok(_) => (),
+                    }
+                    if self.interpret(*expr.clone())? == 0 {
+                        break;
+                    }
+                }
+                self.stack[last_idx].remove(&loop_token);
+                Ok(0)
+            },
+            Ast::LoopNav(token) => match token {
+                Break => {
+                    let loop_token = Id("#loop".into());
+                    if let Some(idx) = self.highest_frame_idx_with(&loop_token) {
+                        *self.stack[idx].get_mut(&loop_token).unwrap() = 0;
+                        Err("#loop.break".into())
+                    }
+                    else {
+                        Err(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
+                    }
+                },
+                Continue => {
+                    let loop_token = Id("#loop".into());
+                    if self.highest_frame_idx_with(&loop_token).is_some() {
+                        Err("#loop.continue".into())
+                    }
+                    else {
+                        Err(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
+                    }
+                },
+                _ => Err(format!("Interpreter: Unknown loop nav `{:?}`", token)),
+            },
             Ast::Line(scope, expr) => {
                 while scope + 1 > self.stack.len() {
                     self.stack.push(HashMap::new());
@@ -135,7 +180,7 @@ impl Interpreter {
             },
             Ast::LinePair(line, next) => {
                 self.interpret(*line)?;
-                println!("after line {:?}", self);
+                // println!("after line {:?}", self);
                 Ok(self.interpret(*next)?)
             },
             Ast::Empty => Ok(0),
@@ -153,6 +198,26 @@ pub fn eval(code: &str) -> Res<Int> {
 #[macro_use]
 mod util {
     use super::*;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    fn eval_within(code: &str, timeout: Duration) -> Res<Int> {
+        let (sender, receiver) = mpsc::channel();
+        let code: String = code.into();
+        thread::spawn(move|| {
+            sender.send(eval(&code)).unwrap();
+        });
+
+        let now = Instant::now();
+        while now.elapsed() < timeout {
+            match receiver.try_recv() {
+                Ok(res) => return res,
+                _ => thread::sleep(Duration::from_millis(5)),
+            }
+        }
+        Err(format!("Program did not return within {:?}", timeout))
+    }
 
     fn print_program_debug(code: &str) -> Res<()> {
         let ast = Parser::new(code)?.parse()?;
@@ -162,11 +227,11 @@ mod util {
 
     pub fn result(code: &str) -> Int {
         print_program_debug(code).unwrap();
-        eval(code).unwrap()
+        eval_within(code, Duration::from_secs(1)).unwrap()
     }
 
     pub fn error(code: &str) -> String {
-        let out = eval(code);
+        let out = eval_within(code, Duration::from_secs(1));
         if out.is_ok() {
             print_program_debug(code).unwrap();
         }
@@ -206,18 +271,41 @@ mod util {
     }
 }
 
-// #[cfg(test)]
-// mod loops {
-//     use super::*;
-//
-//     #[test]
-//     fn loop() {
-//         assert_program!("var x = 1";
-//                         "loop:";
-//                         "    x *= 2";
-//                         "    if x "
-//     }
-// }
+#[cfg(test)]
+mod loops {
+    use super::*;
+
+    #[test]
+    fn loop_and_break() {
+        assert_program!("var x = 1";
+                        "loop";
+                        "    x *= 2";
+                        "    if x > 10";
+                        "        break";
+                        "x" => 16);
+    }
+
+    #[test]
+    fn loop_continue_break() {
+        assert_program!("var x = 1";
+                        "loop";
+                        "    x -= 1";
+                        "    if x <= -5";
+                        "        x *= -3";
+                        "        continue";
+                        "    if x > 10";
+                        "        break";
+                        "x" => 14);
+    }
+
+    #[test]
+    fn while_loop() {
+        assert_program!("var x = 1";
+                        "while x < 50";
+                        "    x *= 3";
+                        "x" => 81);
+    }
+}
 
 #[cfg(test)]
 mod if_scope {

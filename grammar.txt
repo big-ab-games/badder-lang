@@ -5,6 +5,8 @@ line    : indent* expr Eol|Eof
         | indent* id Ass expr Eol|Eof
         | indent* id (Pls|Sub|Mul|Div)Ass expr Eol|Eof
         | indent* If expr Eol block(+1) (Else (if expr)? Eol block(+1))+
+        | indent* Loop Eol block(+1)
+        | indent* While expr Eol block(+1)
         | indent* Eol|Eof
 
 expr    : ored
