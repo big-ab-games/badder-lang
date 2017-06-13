@@ -6,6 +6,14 @@ var seven = 700
 six = ((six + 4)) / 2
 six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
-var seven = 7 # assignment shadowing
+if seven is not 7:
+    seven /= 10
+
+if not seven is 7:
+    seven /= 10
+
+if seven is 7:
+    var seven = 11 # assignment shadowing in this scope
+    seven *= 2
 
 six * seven

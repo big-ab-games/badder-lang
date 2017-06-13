@@ -2,6 +2,7 @@ mod lexer;
 mod parser;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use lexer::Token;
 use lexer::Token::*;
 use parser::*;
@@ -11,20 +12,41 @@ pub use parser::Parser;
 pub type Res<T> = Result<T, String>;
 pub type Int = i32;
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct Interpreter {
-    vars: HashMap<lexer::Token, Int>,
+    stack: Vec<HashMap<lexer::Token, Int>>,
 }
 
 impl Interpreter {
+    pub fn new() -> Interpreter {
+        Interpreter {
+            stack: vec!(HashMap::new())
+        }
+    }
+
     fn unknown_id_err(&mut self, id: &Token) -> String {
-        if self.vars.is_empty() {
+        let keys: HashSet<&lexer::Token> = self.stack.iter()
+            .flat_map(|m| m.keys())
+            .collect();
+        if keys.is_empty() {
             format!("Interpreter: id `{:?}` not found in scope", id)
         }
         else {
+            assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
             format!("Interpreter: id `{:?}` not found in scope, {:?} available",
-                id, self.vars.keys())
+                id, keys)
         }
+    }
+
+    fn highest_frame_idx_with(&self, key: &lexer::Token) -> Option<usize> {
+        let mut idx = self.stack.len() as isize - 1 ;
+        while idx != -1 {
+            if self.stack[idx as usize].contains_key(key) {
+                return Some(idx as usize);
+            }
+            idx -= 1;
+        }
+        None
     }
 
     pub fn interpret(&mut self, ast: Ast) -> Res<Int> {
@@ -59,24 +81,49 @@ impl Interpreter {
             }),
             Ast::Assign(id, expr) => {
                 let v = self.interpret(*expr)?;
-                self.vars.insert(id.clone(), v);
+                let last_idx = self.stack.len() - 1;
+                self.stack[last_idx].insert(id.clone(), v);
                 Ok(v)
             },
             Ast::Reassign(id, expr) => {
                 // reassign to any parent scope
-                if self.vars.contains_key(&id) {
+                if let Some(idx) = self.highest_frame_idx_with(&id) {
                     let v = self.interpret(*expr)?;
-                    *self.vars.get_mut(&id).unwrap() = v;
+                    *self.stack[idx].get_mut(&id).unwrap() = v;
                     Ok(v)
                 }
                 else {
                     Err(format!("{}, did you mean `var {:?} =`?", self.unknown_id_err(&id), id))
                 }
             },
-            Ast::Refer(id) => self.vars.get(&id).cloned()
-                .ok_or_else(|| self.unknown_id_err(&id)),
-            Ast::Line(line, next) => {
+            Ast::Refer(id) => {
+                if let Some(idx) = self.highest_frame_idx_with(&id) {
+                    Ok(self.stack[idx].get(&id).cloned()
+                        .expect("Error highest_frame_idx_with result"))
+                }
+                else {
+                    Err(self.unknown_id_err(&id))
+                }
+            },
+            Ast::If(expr, block) => Ok(match self.interpret(*expr)? {
+                0 => 0,
+                _ => {
+                    self.interpret(*block)?;
+                    0
+                }
+            }),
+            Ast::Line(scope, expr) => {
+                while scope + 1 > self.stack.len() {
+                    self.stack.push(HashMap::new());
+                }
+                while scope + 1 < self.stack.len() {
+                    self.stack.pop();
+                }
+                self.interpret(*expr)
+            },
+            Ast::LinePair(line, next) => {
                 self.interpret(*line)?;
+                println!("after line {:?}", self);
                 Ok(self.interpret(*next)?)
             },
             Ast::Empty => Ok(0),
@@ -86,7 +133,7 @@ impl Interpreter {
 }
 
 pub fn eval(code: &str) -> Res<Int> {
-    Interpreter::default().interpret(Parser::new(code)?.parse()?)
+    Interpreter::new().interpret(Parser::new(code)?.parse()?)
 }
 
 
@@ -95,12 +142,22 @@ pub fn eval(code: &str) -> Res<Int> {
 mod util {
     use super::*;
 
+    fn print_program_debug(code: &str) -> Res<()> {
+        let ast = Parser::new(code)?.parse()?;
+        println!("Program: \n{}", ast.debug_string());
+        Ok(())
+    }
+
     pub fn result(code: &str) -> Int {
+        print_program_debug(code).unwrap();
         eval(code).unwrap()
     }
 
     pub fn error(code: &str) -> String {
         let out = eval(code);
+        if out.is_ok() {
+            print_program_debug(code).unwrap();
+        }
         assert!(out.is_err(), format!("Unexpected {:?}", out));
         if let Err(reason) = out {
             return reason;
@@ -121,8 +178,12 @@ mod util {
             )+
             assert_eq!(util::result(&code), $out);
         }};
-        ($code:expr =>X $( $sub:expr ),+ ) => {
-            let err = util::error($code);
+        ($( $code:expr );+ =>X $( $sub:expr ),+ ) => {
+            let mut code = String::new();
+            $(
+                code = code + $code + "\n";
+            )+
+            let err = util::error(&code);
             let err_lower = err.to_lowercase();
             $(
                 let substring_lower = $sub.to_lowercase();
@@ -134,19 +195,80 @@ mod util {
 }
 
 #[cfg(test)]
-mod simple_scope {
-    // use super::*;
+mod scope {
+    use super::*;
 
     // #[test]
-    // fn if_flow() {
-    //     assert_program!("var x = 200";
-    //                     "var y = 100";
-    //                     "if 1:";
-    //                     "    x = 123";
-    //                     "if 0:";
-    //                     "    y = 123";
-    //                     "x + y" => 223);
+    // fn loop() {
+    //     assert_program!("var x = 1";
+    //                     "loop:";
+    //                     "    x *= 2";
+    //                     "    if
     // }
+
+    #[test]
+    fn if_flow() {
+        assert_program!("var x = 200";
+                        "var y = 100";
+                        "if x is 200:";
+                        "    x = 123";
+                        "if y is 200:";
+                        "    y = 123";
+                        "x + y" => 223);
+        assert_program!("var x = 0";
+                        "var y = 0";
+                        "if x is y:";
+                        "    x = 20";
+                        "if x is y:";
+                        "    y = 30";
+                        "x + y" => 20);
+    }
+
+    #[test]
+    fn if_scope() {
+        assert_program!("var x = 200";
+                        "var y = 111";
+                        "if x is 200:";
+                        "    var x = 300"; // shadow x in if scope
+                        "    y = 300"; // reassign in parent scope
+                        "x + y" => 500);
+        assert_program!("if 1:";
+                        "    var x = 234";
+                        "x" =>X "x", "scope");
+    }
+
+    #[test]
+    fn if_junkspace() {
+        assert_program!("";
+                        "# about to do an if";
+                        "var x  # define a juicy var";
+                        "";
+                        "if x is 0: # this should always work";
+                        "";
+                        "  "; // non 4x indent, but fully junk
+                        "    ";
+                        "    # hmm";
+                        "         # why did i write this?"; // non 4x indent, but fully junk
+                        "    x += 50";
+                        "# blankers helps the program be readable maybe";
+                        "";
+                        "";
+                        "    x *= 2";
+                        "    ";
+                        "    ";
+                        "x";
+                        "";
+                        "# finished now" => 100);
+    }
+
+    #[test]
+    fn if_scope_err() {
+        assert_program!("var x = 200";
+                        "if x is not 0:";
+                        "   x -= 1"; // dodgy indent
+                        "    x += 1";
+                        "x" =>X "indent");
+    }
 }
 
 #[cfg(test)]
@@ -227,6 +349,51 @@ mod single_scope {
                         "v *= 2"; // 20
                         "v /= 4";
                         "v" => 5)
+    }
+}
+
+#[cfg(test)]
+mod booleans {
+    use super::*;
+
+    #[test]
+    fn is() {
+        assert_program!("1 is 2" => 0);
+        assert_program!("2 is 1 + 1" => 1);
+    }
+
+    #[test]
+    fn is_not() {
+        assert_program!("3 is not 3" => 0);
+        assert_program!("3 is not 4" => 1);
+    }
+
+    #[test]
+    fn not() {
+        assert_program!("not 1" => 0);
+        assert_program!("not 0" => 1);
+        assert_program!("not 5 is 4" => 1);
+        assert_program!("not 5 or 4 and 0" => 0);
+    }
+
+    #[test]
+    fn multi_is_err() {
+        assert_program!("2 is 2 is 1" =>X "is");
+    }
+
+    #[test]
+    fn and() {
+        assert_program!("1 + 2 and 2 + 3 and 3 + 4" => 7);
+        assert_program!("not 1 - 1 and not 2 + 3" => 0);
+        assert_program!("1 + 2 and 7 is 2 and 3 + 4" => 0);
+    }
+
+    #[test]
+    fn or() {
+        assert_program!("1 + 2 or 2 + 3 or 3 + 4" => 3);
+        assert_program!("0 or 1 and 0 or 0" => 0);
+        assert_program!("0 or 0 or 123" => 123);
+        assert_program!("0 or 234 or 0" => 234);
     }
 }
 
@@ -313,45 +480,5 @@ mod numerics {
     #[test]
     fn div_by_0_err() {
         assert_program!("1/0" =>X "divide by zero");
-    }
-
-    #[test]
-    fn is() {
-        assert_program!("1 is 2" => 0);
-        assert_program!("2 is 1 + 1" => 1);
-    }
-
-    #[test]
-    fn is_not() {
-        assert_program!("3 is not 3" => 0);
-        assert_program!("3 is not 4" => 1);
-    }
-
-    #[test]
-    fn not() {
-        assert_program!("not 1" => 0);
-        assert_program!("not 0" => 1);
-        assert_program!("not 5 is 4" => 1);
-        assert_program!("not 5 or 4 and 0" => 0);
-    }
-
-    #[test]
-    fn multi_is_err() {
-        assert_program!("2 is 2 is 1" =>X "is");
-    }
-
-    #[test]
-    fn and() {
-        assert_program!("1 + 2 and 2 + 3 and 3 + 4" => 7);
-        assert_program!("not 1 - 1 and not 2 + 3" => 0);
-        assert_program!("1 + 2 and 7 is 2 and 3 + 4" => 0);
-    }
-
-    #[test]
-    fn or() {
-        assert_program!("1 + 2 or 2 + 3 or 3 + 4" => 3);
-        assert_program!("0 or 1 and 0 or 0" => 0);
-        assert_program!("0 or 0 or 123" => 123);
-        assert_program!("0 or 234 or 0" => 234);
     }
 }

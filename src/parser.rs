@@ -14,8 +14,12 @@ pub enum Ast {
     Reassign(Token, Box<Ast>),
     /// Refer(variable_id)
     Refer(Token),
-    /// Line(line, next)
-    Line(Box<Ast>, Box<Ast>),
+    /// If(if-expr, resultant-block)
+    If(Box<Ast>, Box<Ast>),
+    /// Line(scope, expr)
+    Line(usize, Box<Ast>),
+    /// LinePair(line, next_line)
+    LinePair(Box<Ast>, Box<Ast>),
     Empty,
 }
 
@@ -28,8 +32,27 @@ impl Ast {
         Ast::LeftUnaryOp(token, node.into())
     }
 
-    pub fn line<A: Into<Box<Ast>>>(before: A, after: A) -> Ast {
-        Ast::Line(before.into(), after.into())
+    pub fn line<A: Into<Box<Ast>>>(scope: usize, expr: A) -> Ast {
+        Ast::Line(scope, expr.into())
+    }
+
+    pub fn line_pair<A: Into<Box<Ast>>>(before: A, after: A) -> Ast {
+        let line = before.into();
+        if let Ast::LinePair(_, _) = *line {
+            panic!("LinePair left val must not be a LinePair");
+        }
+        Ast::LinePair(line, after.into())
+    }
+
+    pub fn debug_string(&self) -> String {
+        match self {
+            &Ast::LinePair(ref line, ref next) => line.debug_string() + "\n" + &next.debug_string(),
+            &Ast::Line(scope, ref expr) => format!("-{}{}> {}",
+                scope, "-".repeat(scope), expr.debug_string()),
+            &Ast::If(ref expr, ref block) => format!("If({})\n{}",
+                expr.debug_string(), block.debug_string()),
+            x => format!("{:?}", x),
+        }
     }
 }
 
@@ -37,6 +60,8 @@ impl Ast {
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current_token: Token,
+    /// stack of 'next lines' that we want to process later with earlier lines at the top
+    unused_lines: Vec<Ast>,
 }
 
 impl<'a> Parser<'a> {
@@ -46,6 +71,7 @@ impl<'a> Parser<'a> {
         Ok(Parser {
             lexer,
             current_token: first,
+            unused_lines: Vec::new(),
         })
     }
 
@@ -55,6 +81,8 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_any(&mut self, types: &[Token]) -> Res<Token> {
+        assert!(self.unused_lines.is_empty());
+
         if types.iter().any(|t| t.matches(&self.current_token)) {
             let res = Ok(self.current_token.clone());
             self.next_token()?;
@@ -68,11 +96,14 @@ impl<'a> Parser<'a> {
                 })
                 .collect::<Vec<String>>()
                 .join(",");
-            Err(format!("Parser: Expected `{}` got {}", expected, self.current_token.long_debug()))
+            Err(format!("Parser: {} Expected `{}` got {}",
+                self.lexer.cursor_debug(), expected, self.current_token.long_debug()))
         }
     }
 
     fn consume_any_maybe(&mut self, types: &[Token]) -> Res<Option<Token>> {
+        assert!(self.unused_lines.is_empty());
+
         if types.iter().any(|t| t.matches(&self.current_token)) {
             let res = Ok(Some(self.current_token.clone()));
             self.next_token()?;
@@ -178,17 +209,19 @@ impl<'a> Parser<'a> {
 
     fn braced(&mut self) -> Res<Ast> {
         if self.consume_maybe(OpnBrace)?.is_some() {
-            let out = self.noted()?;
+            let out = self.expr()?;
             self.consume(ClsBrace)?;
             return Ok(out);
         }
-        self.noted()
+        self.expr()
     }
 
-    fn line(&mut self) -> Res<Ast> {
-        while self.consume_maybe(Eol)?.is_some() {
-            // skip blank lines
-        }
+    #[inline]
+    fn expr(&mut self) -> Res<Ast> {
+        self.ored()
+    }
+
+    fn line_expr(&mut self, scope: usize) -> Res<Ast> {
         // var id = expr
         if self.consume_maybe(Var)?.is_some() {
             let id = self.consume(Id("identifier".into()))?;
@@ -196,7 +229,7 @@ impl<'a> Parser<'a> {
                 self.consume_any(&[Ass, Eol, Eof])?;
                 return Ok(Ast::Assign(id, Ast::Num(Num(0)).into()));
             }
-            let expr = self.ored()?;
+            let expr = self.expr()?;
             self.consume_any(&[Eol, Eof])?;
             return Ok(Ast::Assign(id, expr.into()));
         }
@@ -206,22 +239,37 @@ impl<'a> Parser<'a> {
             if peek == Ass {
                 let id = self.consume(Id("identifier".into()))?;
                 self.consume(Ass)?;
-                let expr = self.ored()?;
+                let expr = self.expr()?;
                 self.consume_any(&[Eol, Eof])?;
                 return Ok(Ast::Reassign(id, expr.into()));
             }
             if let OpAss(op) = peek {
                 let id = self.consume(Id("identifier".into()))?;
                 self.next_token()?;
-                let expr = self.ored()?;
+                let expr = self.expr()?;
                 self.consume_any(&[Eol, Eof])?;
                 // v *= expr  ->  v = v * expr
                 return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
             }
         }
+        // If expr:
+        //     line+
+        if self.consume_maybe(If)?.is_some() {
+            let expr = self.expr()?;
+            self.consume(Colon)?;
+            self.consume(Eol)?;
+            let block = self.lines_while(|l| match l {
+                &Ast::Line(line_scope, _) => line_scope > scope,
+                _ => false
+            })?;
+            if block.is_none() {
+                return Err("Parser: Expected line after `if` with exactly +1 indent".into());
+            }
+            return Ok(Ast::If(expr.into(), block.unwrap().into()));
+        }
         // expr
         if self.current_token != Eof {
-            let out = self.ored()?;
+            let out = self.expr()?;
             self.consume_any(&[Eol, Eof])?;
             return Ok(out);
         }
@@ -230,26 +278,42 @@ impl<'a> Parser<'a> {
         Ok(Ast::Empty)
     }
 
-    fn program(&mut self) -> Res<Ast> {
-        let mut out = self.line()?;
-        while self.current_token != Eof {
-            out = Ast::line(out, self.line()?);
+    fn indented_line(&mut self) -> Res<Ast> {
+        if let Some(line) = self.unused_lines.pop() {
+            return Ok(line);
         }
-        // reached Eof, remove Empty in favour of populated lines
-        if let Ast::Line(line, last) = out {
-            if let Ast::Empty = *last {
-                Ok(*line)
-            }
-            else {
-                Ok(Ast::Line(line, last))
-            }
+
+        let mut scope = 0;
+        while let Some(token) = self.consume_any_maybe(&[Eol, Indent(0)])? {
+            match token {
+                Indent(x) => scope = x,
+                Eol => scope = 0, // reset scope, and skip empty lines
+                _ => unreachable!()
+            };
         }
-        else {
-            Ok(out)
+        Ok(match self.line_expr(scope)? {
+            Ast::Empty => Ast::Empty,
+            ast => Ast::Line(scope, ast.into())
+        })
+    }
+
+    /// Returns (lines, rejected_next_line)
+    fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>>
+        where F: Fn(&Ast) -> bool
+    {
+        let line = self.indented_line()?;
+        if line == Ast::Empty || !predicate(&line) {
+            self.unused_lines.push(line);
+            return Ok(None);
         }
+        Ok(match self.lines_while(predicate)? {
+            None => Some(line),
+            Some(next) => Some(Ast::line_pair(line, next)),
+        })
     }
 
     pub fn parse(&mut self) -> Res<Ast> {
-        self.program()
+        let lines = self.lines_while(|_| true)?;
+        Ok(lines.unwrap_or(Ast::Empty))
     }
 }
