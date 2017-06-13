@@ -256,7 +256,6 @@ impl<'a> Parser<'a> {
         //     line+
         if self.consume_maybe(If)?.is_some() {
             let expr = self.expr()?;
-            self.consume(Colon)?;
             self.consume(Eol)?;
             let block = self.lines_while(|l| match l {
                 &Ast::Line(line_scope, _) => line_scope > scope,

@@ -32,7 +32,6 @@ pub enum Token {
     Not,
     Is,
     Indent(usize),
-    Colon,
 }
 
 use lexer::Token::*;
@@ -59,7 +58,6 @@ impl fmt::Debug for Token {
             Def => write!(f, "def"),
             And => write!(f, "and"),
             Or => write!(f, "or"),
-            Colon => write!(f, ":"),
             Indent(i) => write!(f, "'    '*{}", i),
             Id(ref id) => write!(f, "{}", id),
         }
@@ -76,7 +74,6 @@ impl Token {
             '(' => Some(OpnBrace),
             ')' => Some(ClsBrace),
             '=' => Some(Ass),
-            ':' => Some(Colon),
             _ => None,
         }
     }
@@ -117,6 +114,8 @@ impl Token {
             Id(ref id) => format!("id `{}`", id),
             Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass|OpAss(_) => format!("operator {:?}", self),
             Indent(_) => format!("indent {:?}", self),
+            Eol => "end-of-line".into(),
+            Eof => "end-of-file".into(),
             _ => format!("keyword `{:?}`", self),
         }
     }

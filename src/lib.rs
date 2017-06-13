@@ -210,16 +210,16 @@ mod scope {
     fn if_flow() {
         assert_program!("var x = 200";
                         "var y = 100";
-                        "if x is 200:";
+                        "if x is 200";
                         "    x = 123";
-                        "if y is 200:";
+                        "if y is 200";
                         "    y = 123";
                         "x + y" => 223);
         assert_program!("var x = 0";
                         "var y = 0";
-                        "if x is y:";
+                        "if x is y";
                         "    x = 20";
-                        "if x is y:";
+                        "if x is y";
                         "    y = 30";
                         "x + y" => 20);
     }
@@ -228,11 +228,11 @@ mod scope {
     fn if_scope() {
         assert_program!("var x = 200";
                         "var y = 111";
-                        "if x is 200:";
+                        "if x is 200";
                         "    var x = 300"; // shadow x in if scope
                         "    y = 300"; // reassign in parent scope
                         "x + y" => 500);
-        assert_program!("if 1:";
+        assert_program!("if 1";
                         "    var x = 234";
                         "x" =>X "x", "scope");
     }
@@ -243,7 +243,7 @@ mod scope {
                         "# about to do an if";
                         "var x  # define a juicy var";
                         "";
-                        "if x is 0: # this should always work";
+                        "if x is 0 # this should always work";
                         "";
                         "  "; // non 4x indent, but fully junk
                         "    ";
@@ -264,7 +264,7 @@ mod scope {
     #[test]
     fn if_scope_err() {
         assert_program!("var x = 200";
-                        "if x is not 0:";
+                        "if x is not 0";
                         "   x -= 1"; // dodgy indent
                         "    x += 1";
                         "x" =>X "indent");
