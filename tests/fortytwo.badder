@@ -6,14 +6,15 @@ var seven = 700
 six = ((six + 4)) / 2
 six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
-if seven is not 7
+if seven is 70
     seven /= 10
-
-if not seven is 7
-    seven /= 10
+else if seven is 700
+    seven /= 100
 
 if seven is 7
     var seven = 11 # assignment shadowing in this scope
     seven *= 2
+else
+    var confused = 1 # seven should be 7 by now
 
 six * seven

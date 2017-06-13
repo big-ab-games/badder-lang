@@ -14,8 +14,8 @@ pub enum Ast {
     Reassign(Token, Box<Ast>),
     /// Refer(variable_id)
     Refer(Token),
-    /// If(if-expr, resultant-block)
-    If(Box<Ast>, Box<Ast>),
+    /// If(if-expr, resultant-block, Line(If), is_else)
+    If(Box<Ast>, Box<Ast>, Option<Box<Ast>>, bool),
     /// Line(scope, expr)
     Line(usize, Box<Ast>),
     /// LinePair(line, next_line)
@@ -44,15 +44,34 @@ impl Ast {
         Ast::LinePair(line, after.into())
     }
 
+    pub fn just_if(expr: Ast, block: Ast, is_else: bool) -> Ast {
+        Ast::If(expr.into(), block.into(), None, is_else)
+    }
+
+    pub fn if_else(expr: Ast, block: Ast, else_if: Ast, is_else: bool) -> Ast {
+        Ast::If(expr.into(), block.into(), Some(else_if.into()), is_else)
+    }
+
     pub fn debug_string(&self) -> String {
         match self {
             &Ast::LinePair(ref line, ref next) => line.debug_string() + "\n" + &next.debug_string(),
             &Ast::Line(scope, ref expr) => format!("-{}{}> {}",
                 scope, "-".repeat(scope), expr.debug_string()),
-            &Ast::If(ref expr, ref block) => format!("If({})\n{}",
+            &Ast::If(ref expr, ref block, None, _) => format!("If({})\n{}",
                 expr.debug_string(), block.debug_string()),
+            &Ast::If(ref expr, ref block, Some(ref elif), _) => format!("If({})\n{}\nElse{}",
+                expr.debug_string(), block.debug_string(), elif.debug_string()),
             x => format!("{:?}", x),
         }
+    }
+
+    fn is_else_line(&self) -> bool {
+        if let &Ast::Line(_, ref ast) = self {
+            if let Ast::If(_, _, _, is_else) = **ast {
+                return is_else;
+            }
+        }
+        false
     }
 }
 
@@ -221,7 +240,7 @@ impl<'a> Parser<'a> {
         self.ored()
     }
 
-    fn line_expr(&mut self, scope: usize) -> Res<Ast> {
+    fn line_expr(&mut self, scope: usize, allow_else: bool) -> Res<Ast> {
         // var id = expr
         if self.consume_maybe(Var)?.is_some() {
             let id = self.consume(Id("identifier".into()))?;
@@ -252,19 +271,36 @@ impl<'a> Parser<'a> {
                 return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
             }
         }
-        // If expr:
+        // If expr
         //     line+
-        if self.consume_maybe(If)?.is_some() {
-            let expr = self.expr()?;
+        if self.current_token == If || allow_else && self.current_token == Else {
+            let (expr, is_else) = {
+                if self.consume_maybe(If)?.is_some() {
+                    (self.expr()?, false)
+                }
+                else {
+                    self.consume(Else)?;
+                    (self.consume_maybe(If)?
+                        .map(|_| self.expr())
+                        .unwrap_or_else(|| Ok(Ast::Num(Num(1))))?, true)
+                }
+            };
             self.consume(Eol)?;
             let block = self.lines_while(|l| match l {
                 &Ast::Line(line_scope, _) => line_scope > scope,
                 _ => false
-            })?;
+            }, true)?;
             if block.is_none() {
                 return Err("Parser: Expected line after `if` with exactly +1 indent".into());
             }
-            return Ok(Ast::If(expr.into(), block.unwrap().into()));
+            // else will be in unused_lines as they would mark the end of an if block
+            if let Some(line) = self.unused_lines.pop() {
+                if line.is_else_line() {
+                    return Ok(Ast::if_else(expr, block.unwrap(), line, is_else));
+                }
+                self.unused_lines.push(line);
+            }
+            return Ok(Ast::just_if(expr, block.unwrap(), is_else));
         }
         // expr
         if self.current_token != Eof {
@@ -277,7 +313,7 @@ impl<'a> Parser<'a> {
         Ok(Ast::Empty)
     }
 
-    fn indented_line(&mut self) -> Res<Ast> {
+    fn indented_line(&mut self, allow_else: bool) -> Res<Ast> {
         if let Some(line) = self.unused_lines.pop() {
             return Ok(line);
         }
@@ -290,29 +326,29 @@ impl<'a> Parser<'a> {
                 _ => unreachable!()
             };
         }
-        Ok(match self.line_expr(scope)? {
+        Ok(match self.line_expr(scope, allow_else)? {
             Ast::Empty => Ast::Empty,
             ast => Ast::Line(scope, ast.into())
         })
     }
 
     /// Returns (lines, rejected_next_line)
-    fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>>
+    fn lines_while<F>(&mut self, predicate: F, allow_else: bool) -> Res<Option<Ast>>
         where F: Fn(&Ast) -> bool
     {
-        let line = self.indented_line()?;
+        let line = self.indented_line(allow_else)?;
         if line == Ast::Empty || !predicate(&line) {
             self.unused_lines.push(line);
             return Ok(None);
         }
-        Ok(match self.lines_while(predicate)? {
+        Ok(match self.lines_while(predicate, allow_else)? {
             None => Some(line),
             Some(next) => Some(Ast::line_pair(line, next)),
         })
     }
 
     pub fn parse(&mut self) -> Res<Ast> {
-        let lines = self.lines_while(|_| true)?;
+        let lines = self.lines_while(|_| true, false)?;
         Ok(lines.unwrap_or(Ast::Empty))
     }
 }

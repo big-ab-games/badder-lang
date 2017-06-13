@@ -105,8 +105,11 @@ impl Interpreter {
                     Err(self.unknown_id_err(&id))
                 }
             },
-            Ast::If(expr, block) => Ok(match self.interpret(*expr)? {
-                0 => 0,
+            Ast::If(expr, block, else_line, _) => Ok(match self.interpret(*expr)? {
+                0 => match else_line {
+                    Some(else_line) => self.interpret(*else_line)?,
+                    None => 0,
+                },
                 _ => {
                     self.interpret(*block)?;
                     0
@@ -268,6 +271,47 @@ mod scope {
                         "   x -= 1"; // dodgy indent
                         "    x += 1";
                         "x" =>X "indent");
+    }
+
+    #[test]
+    fn multi_scope() {
+        assert_program!("var x = 200";
+                        "if x is not 0";
+                        "    var y = x";
+                        "    if y is 200";
+                        "        var z = y";
+                        "        if z is not 999";
+                        "            y /= 2";
+                        "            x = y + z";
+                        "x" => 300);
+    }
+
+    #[test]
+    fn if_else() {
+        assert_program!("var x";
+                        "if x";
+                        "    x = 14";
+                        "else";
+                        "    x = -9000";
+                        "x" => -9000);
+    }
+
+    #[test]
+    fn if_else_chain() {
+        assert_program!("var x = 3";
+                        "if x is 0";
+                        "    x = -1";
+                        "else if x is 1";
+                        "    x = -2";
+                        "else if x is 2";
+                        "    x = -3";
+                        "else if x is 3";
+                        "    x = -4";
+                        "else if x is 4";
+                        "    x = -5";
+                        "else";
+                        "    x = -999";
+                        "x" => -4);
     }
 }
 

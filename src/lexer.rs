@@ -148,7 +148,7 @@ impl<'a> Lexer<'a> {
             chars,
             current_char: first,
             newline: true,
-            line_num: 0,
+            line_num: 1,
             char_num: 1,
         }
     }
@@ -217,7 +217,7 @@ impl<'a> Lexer<'a> {
                 return Ok(token);
             }
 
-            return Err(format!("Lexer: {} Unexpected char: {}", self.cursor_debug(), c));
+            return Err(format!("Lexer: {} Unexpected char: `{}`", self.cursor_debug(), c));
         }
 
         Ok(Eof)
