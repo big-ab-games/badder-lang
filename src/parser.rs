@@ -102,14 +102,14 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str) -> Res<Parser<'a>> {
+    pub fn parse_str(code: &'a str) -> Res<Ast> {
         let mut lexer = Lexer::new(code);
         let first = lexer.next_token()?;
-        Ok(Parser {
+        Parser {
             lexer,
             current_token: first,
             unused_lines: Vec::new(),
-        })
+        }.parse()
     }
 
     fn next_token(&mut self) -> Res<&Token> {

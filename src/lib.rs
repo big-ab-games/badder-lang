@@ -279,7 +279,7 @@ impl Interpreter {
 }
 
 pub fn eval(code: &str) -> Res<Int> {
-    Interpreter::new().interpret(Parser::new(code)?.parse()?)
+    Interpreter::new().interpret(Parser::parse_str(code)?)
 }
 
 
@@ -311,7 +311,7 @@ mod util {
     }
 
     fn print_program_debug(code: &str) -> Res<()> {
-        let ast = Parser::new(code)?.parse()?;
+        let ast = Parser::parse_str(code)?;
         println!("Program: \n{}", ast.debug_string());
         Ok(())
     }
@@ -393,15 +393,18 @@ mod functions {
         assert_program!("var out";
                         "var c = -11";
                         "if 1";
-                        "    var a = 12";
+                        "    var a = 12"; // Intended
                         "    var b = -5";
+                        "    var c = 123";
                         "    if 2";
                         "        fun a_and_b_p1()";
-                        "            var c = 1";
+                        "            var c = 1"; // Intended
                         "            return a + b + c";
-                        "        var b = 6";
+                        "        var b = 6"; // Intended
+                        "        var c = -123123";
                         "        if 3";
                         "            var a = 1";
+                        "            var c = 999";
                         // call in scope 3 should have access to scopes >3 and <=2 (def scope)
                         "            out = a_and_b_p1()"; // should refer to a(scope1), b(scope2)
                         "out" => 19);
