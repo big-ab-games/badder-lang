@@ -14,6 +14,7 @@ use std::cmp::max;
 use std::usize;
 use std::sync::Arc;
 use std::iter::Iterator;
+use std::mem;
 
 pub use parser::Parser;
 
@@ -24,7 +25,8 @@ const MAX_STACK: usize = 50;
 
 enum FrameData {
     Value(Int),
-    Callable(Arc<Ast>),
+    /// Callable(args, block)
+    Callable(Vec<Token>, Arc<Ast>),
     LoopMarker,
 }
 
@@ -32,7 +34,7 @@ impl fmt::Debug for FrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Value(x) => write!(f, "Value({})", x),
-            Callable(_) => write!(f, "Callable"),
+            Callable(_, _) => write!(f, "Callable"),
             LoopMarker => write!(f, "LoopMarker"),
         }
     }
@@ -243,26 +245,41 @@ impl Interpreter {
                     interprerror(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
                 }
             },
-            Ast::Fun(ref id, ref block) => {
+            Ast::Fun(ref id, ref args, ref block) => {
                 let top = self.stack.len() - 1;
-                self.stack[top].insert(id.clone(), Callable(block.clone()));
+                self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
                 Ok(0)
             },
-            Ast::Call(ref id) => {
+            Ast::Call(ref id, ref args) => {
                 if let Some(idx) = highest_frame_idx!(&id) {
-                    let callable_block = {
+                    let (mut arg_ids, callable_block) = {
                         match &self.stack[idx][&id] {
-                            &Callable(ref block) => block.clone(),
+                            &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
                             _ => return interprerror(format!("Interpreter: Invalid reference to\
                                 non callable `{:?}`", id)),
                         }
                     };
+                    if args.len() != arg_ids.len() {
+                        return interprerror(format!("Interpreter: Wrong number of arguments in\
+                            function call to `{:?}`", id));
+                    }
 
-                    match self.eval(&callable_block, current_scope+1, Some(idx)) {
+                    // construct new function call stack frame
+                    let mut f_frame = HashMap::new();
+                    for i in 0..args.len() {
+                        f_frame.insert(mem::replace(&mut arg_ids[i], Eol), Value(eval!(&args[i])?));
+                    }
+                    self.stack.push(f_frame);
+
+                    let out = match self.eval(&callable_block, current_scope+1, Some(idx)) {
                         Err(FunReturn(value)) => Ok(value),
                         Ok(_) => Ok(0),
                         x => x,
-                    }
+                    };
+
+                    // clean stack
+                    self.stack.pop();
+                    out
                 }
                 else {
                     interprerror(self.unknown_id_err(&id))
@@ -474,6 +491,33 @@ mod functions {
                         // call in scope 3 should have access to scopes >3 and <=2 (def scope)
                         "            out = a_and_b_p1()"; // should refer to a(scope1), b(scope2)
                         "out" => 19);
+    }
+
+    #[test]
+    fn function_arg() {
+        assert_program!("fun plus_one(a_number)";
+                        "    return a_number + 1";
+                        "plus_one(12)" => 13);
+    }
+
+    #[test]
+    fn function_complex_args() {
+        assert_program!("var x = 12";
+                        "var always_add = 12";
+                        "fun plus_2(x)";
+                        "    return x + 2";
+                        "fun sum(x, y, z)";
+                        "    return always_add + x + y + z";
+                        "sum(1, x, plus_2(always_add))" => 39);
+    }
+
+    #[test]
+    fn recursive_function() {
+        assert_program!("fun fib(n)";
+                        "    if n < 3";
+                        "        return 1";
+                        "    return fib(n-1) + fib(n-2)";
+                        "fib(12)" => 144);
     }
 }
 

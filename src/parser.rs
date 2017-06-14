@@ -4,6 +4,7 @@ use lexer::*;
 use lexer::Token::*;
 use super::{Res, Int};
 use std::fmt;
+use string_cache::DefaultAtom as Atom;
 
 /// Abstract syntax tree
 #[derive(PartialEq, Clone)]
@@ -22,12 +23,12 @@ pub enum Ast {
     While(Box<Ast>, Arc<Ast>),
     /// LoopNav(break|continue)
     LoopNav(Token),
-    /// Fun(function-id, block) defines a function
-    Fun(Token, Arc<Ast>),
+    /// Fun(function-id, args, block) defines a function
+    Fun(Token, Vec<Token>, Arc<Ast>),
     // Return(expr) used inside function blocks
     Return(Box<Ast>),
-    /// Call(function-id)
-    Call(Token),
+    /// Call(function-id, args)
+    Call(Token, Vec<Ast>),
     /// Line(scope, expr)
     Line(usize, Box<Ast>),
     /// LinePair(line, next_line)
@@ -49,9 +50,9 @@ impl fmt::Debug for Ast {
                 if is_else {"Else"} else {""}, bool_expr),
             Ast::While(ref bool_expr, _) => write!(f, "While({:?},_)", bool_expr),
             Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
-            Ast::Fun(ref t, _) => write!(f, "Fun({:?},_)", t),
+            Ast::Fun(ref t, ref args, _) => write!(f, "Fun({:?},{:?},_)", t, args),
             Ast::Return(ref val) => write!(f, "Return({:?})", val),
-            Ast::Call(ref t) => write!(f, "Call({:?})", t),
+            Ast::Call(ref t, ref args) => write!(f, "Call({:?},{:?})", t, args),
             Ast::Line(ref scope, _) => write!(f, "Line({},_)", scope),
             Ast::LinePair(_, _) => write!(f, "LinePair(_,_)"),
             Ast::Empty => write!(f, "Empty"),
@@ -111,8 +112,8 @@ impl Ast {
                 expr.debug_string(), block.debug_string(), elif.debug_string()),
             &Ast::While(ref expr, ref block) => format!("While({})\n{}",
                 expr.debug_string(), block.debug_string()),
-            &Ast::Fun(ref id, ref block) => format!("DefFun({:?})\n{}",
-                id, block.debug_string()),
+            &Ast::Fun(ref id, ref args, ref block) => format!("DefFun({:?}, {:?})\n{}",
+                id, args, block.debug_string()),
             x => format!("{:?}", x),
         }
     }
@@ -202,8 +203,15 @@ impl<'a> Parser<'a> {
             let id = self.consume(Id("identifier".into()))?;
             if self.current_token == OpnBrace {
                 self.consume(OpnBrace)?;
+                let mut args = vec!();
+                while self.current_token != ClsBrace {
+                    args.push(self.expr()?);
+                    if self.consume_maybe(Comma)?.is_none() {
+                        break;
+                    }
+                }
                 self.consume(ClsBrace)?;
-                Ast::Call(id)
+                Ast::Call(id, args)
             }
             else {
                 Ast::Refer(id)
@@ -362,8 +370,16 @@ impl<'a> Parser<'a> {
     //     line+
     fn line_fun(&mut self, scope: usize) -> Res<Ast> {
         self.consume(Fun)?;
-        let id = self.consume(Id("identifier".into()))?;
+        let id_name: Atom = "identifier".into();
+        let id = self.consume(Id(id_name.clone()))?;
         self.consume(OpnBrace)?;
+        let mut arg_ids = vec!();
+        while let Some(arg) = self.consume_maybe(Id(id_name.clone()))? {
+            arg_ids.push(arg);
+            if self.consume_maybe(Comma)?.is_none() {
+                break;
+            }
+        }
         self.consume(ClsBrace)?;
         self.consume(Eol)?;
         let block = self.lines_while_allowing(|l| match l {
@@ -374,7 +390,7 @@ impl<'a> Parser<'a> {
             return Err(format!("Parser: {} Expected line after `fun` declaration with exactly +1 indent",
                 self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
         }
-        Ok(Ast::Fun(id, block.unwrap().into()))
+        Ok(Ast::Fun(id, arg_ids, block.unwrap().into()))
     }
 
     fn line_expr(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {

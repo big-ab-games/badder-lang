@@ -6,6 +6,14 @@ var seven = 500
 six = ((six + 4)) / 2
 six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
+# fib: 1,1,2,3,5,8,..
+fun fib(n)
+    if n < 3
+        return 1
+    return fib(n-1) + fib(n-2)
+
+var six = fib(6) - fib(3)
+
 
 while seven > 7
     # divide by 10 until smaller than 7
