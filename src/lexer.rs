@@ -2,11 +2,12 @@ use std::str::Chars;
 use std::iter::Peekable;
 use std::fmt;
 use super::{Res, Int};
+use string_cache::DefaultAtom as Atom;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub enum Token {
     Num(Int),
-    Id(String),
+    Id(Atom),
 
     // Operators
     Pls,
@@ -110,8 +111,9 @@ impl Token {
         }
     }
 
-    pub fn parse_id(id: String) -> Token {
-        match id.as_str() {
+    pub fn parse_id<A: Into<Atom>>(id: A) -> Token {
+        let id = id.into();
+        match id.as_ref() {
             "var" => Var,
             "if" => If,
             "else" => Else,
@@ -247,7 +249,7 @@ impl<'a> Lexer<'a> {
 
             // non-digit as here
             if id_char(c) {
-                return Ok(Id(c.to_string()));
+                return Ok(Id(c.to_string().into()));
             }
 
             if let Some(token) = Token::parse(c) {

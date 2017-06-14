@@ -1,10 +1,12 @@
-// use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
 use lexer::*;
 use lexer::Token::*;
 use super::{Res, Int};
+use std::fmt;
 
 /// Abstract syntax tree
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum Ast {
     Num(Token),
     BinOp(Token, Box<Ast>, Box<Ast>),
@@ -15,13 +17,13 @@ pub enum Ast {
     /// Refer(variable_id)
     Refer(Token),
     /// If(if-expr, resultant-block, Line(If), is_else)
-    If(Box<Ast>, Box<Ast>, Option<Box<Ast>>, bool),
+    If(Box<Ast>, Arc<Ast>, Option<Box<Ast>>, bool),
     /// While(if-expr, resultant-block)
-    While(Box<Ast>, Box<Ast>),
+    While(Box<Ast>, Arc<Ast>),
     /// LoopNav(break|continue)
     LoopNav(Token),
     /// Fun(function-id, block) defines a function
-    Fun(Token, Box<Ast>),
+    Fun(Token, Arc<Ast>),
     // Return(expr) used inside function blocks
     Return(Box<Ast>),
     /// Call(function-id)
@@ -31,6 +33,30 @@ pub enum Ast {
     /// LinePair(line, next_line)
     LinePair(Box<Ast>, Box<Ast>),
     Empty,
+}
+
+impl fmt::Debug for Ast {
+    /// Safe for large recursive structures
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Ast::Num(ref t) => write!(f, "Num({:?})", t),
+            Ast::BinOp(ref t, ref l, ref r) => write!(f, "BinOp({:?},{:?},{:?})", t, l, r),
+            Ast::LeftUnaryOp(ref t, ref expr) => write!(f, "LeftUnaryOp({:?},{:?})", t, expr),
+            Ast::Assign(ref t, ref expr) => write!(f, "Assign({:?},{:?})", t, expr),
+            Ast::Reassign(ref t, ref expr) => write!(f, "Reassign({:?},{:?})", t, expr),
+            Ast::Refer(ref t) => write!(f, "Refer({:?})", t),
+            Ast::If(ref bool_expr, _, _, is_else) => write!(f, "{}If({:?},_,_)",
+                if is_else {"Else"} else {""}, bool_expr),
+            Ast::While(ref bool_expr, _) => write!(f, "While({:?},_)", bool_expr),
+            Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
+            Ast::Fun(ref t, _) => write!(f, "Fun({:?},_)", t),
+            Ast::Return(ref val) => write!(f, "Return({:?})", val),
+            Ast::Call(ref t) => write!(f, "Call({:?})", t),
+            Ast::Line(ref scope, _) => write!(f, "Line({},_)", scope),
+            Ast::LinePair(_, _) => write!(f, "LinePair(_,_)"),
+            Ast::Empty => write!(f, "Empty"),
+        }
+    }
 }
 
 impl Ast {
@@ -68,7 +94,15 @@ impl Ast {
 
     pub fn debug_string(&self) -> String {
         match self {
-            &Ast::LinePair(ref line, ref next) => line.debug_string() + "\n" + &next.debug_string(),
+            pair @ &Ast::LinePair(..) => {
+                let mut next = pair;
+                let mut out = String::new();
+                while let &Ast::LinePair(ref l1, ref l2) = next {
+                    out = out + &l1.debug_string() + "\n";
+                    next = l2;
+                }
+                out + &next.debug_string()
+            },
             &Ast::Line(scope, ref expr) => format!("-{}{}> {}",
                 scope, "-".repeat(scope), expr.debug_string()),
             &Ast::If(ref expr, ref block, None, _) => format!("If({})\n{}",
@@ -264,7 +298,7 @@ impl<'a> Parser<'a> {
 
     // If expr
     //     line+
-    fn line_if_else(&mut self, scope: usize, mut allow: Vec<Token>) -> Res<Ast> {
+    fn line_if_else(&mut self, scope: usize, mut allow: Rc<Vec<Token>>) -> Res<Ast> {
         let (expr, is_else) = {
             if self.consume_maybe(If)?.is_some() {
                 (self.expr()?, false)
@@ -278,7 +312,9 @@ impl<'a> Parser<'a> {
         };
         self.consume(Eol)?;
         if !allow.contains(&Else) {
-            allow.push(Else);
+            let mut new_allow: Vec<Token> = allow.as_ref().clone();
+            new_allow.push(Else);
+            allow = new_allow.into();
         }
         let block = self.lines_while_allowing(|l| match l {
             &Ast::Line(line_scope, _) => line_scope > scope,
@@ -314,7 +350,7 @@ impl<'a> Parser<'a> {
         let block = self.lines_while_allowing(|l| match l {
             &Ast::Line(line_scope, _) => line_scope > scope,
             _ => false
-        }, vec!(Break, Continue))?;
+        }, vec!(Break, Continue).into())?;
         if block.is_none() {
             return Err(format!("Parser: {} Expected line after `loop,while,for` with exactly +1 indent",
                 self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
@@ -333,7 +369,7 @@ impl<'a> Parser<'a> {
         let block = self.lines_while_allowing(|l| match l {
             &Ast::Line(line_scope, _) => line_scope > scope,
             _ => false
-        }, vec!(Return))?;
+        }, vec!(Return).into())?;
         if block.is_none() {
             return Err(format!("Parser: {} Expected line after `fun` declaration with exactly +1 indent",
                 self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
@@ -341,7 +377,7 @@ impl<'a> Parser<'a> {
         Ok(Ast::Fun(id, block.unwrap().into()))
     }
 
-    fn line_expr(&mut self, scope: usize, allow: Vec<Token>) -> Res<Ast> {
+    fn line_expr(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {
         if allow.contains(&self.current_token) {
             if let Some(token) = self.consume_any_maybe(&[Break, Continue])? {
                 return Ok(Ast::LoopNav(token));
@@ -417,7 +453,7 @@ impl<'a> Parser<'a> {
         Ok(Ast::Empty)
     }
 
-    fn indented_line(&mut self, allow: Vec<Token>) -> Res<Ast> {
+    fn indented_line(&mut self, allow: Rc<Vec<Token>>) -> Res<Ast> {
         if let Some(line) = self.unused_lines.pop() {
             return Ok(line);
         }
@@ -436,24 +472,34 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn lines_while_allowing<F>(&mut self, predicate: F, allow: Vec<Token>) -> Res<Option<Ast>>
+    fn lines_while_allowing<F>(&mut self, predicate: F, allow: Rc<Vec<Token>>) -> Res<Option<Ast>>
         where F: Fn(&Ast) -> bool
     {
-        let line = self.indented_line(allow.clone())?;
-        if line == Ast::Empty || !predicate(&line) {
-            self.unused_lines.push(line);
-            return Ok(None);
+        let mut all = vec!();
+        let mut line = self.indented_line(allow.clone())?;
+        while line != Ast::Empty && predicate(&line) {
+            all.push(line);
+            line = self.indented_line(allow.clone())?;
         }
-        Ok(match self.lines_while_allowing(predicate, allow)? {
-            None => Some(line),
-            Some(next) => Some(Ast::line_pair(line, next)),
-        })
+        self.unused_lines.push(line);
+
+        let mut pairs: Option<Ast> = None;
+        let mut idx = all.len();
+
+        while idx != 0 {
+            pairs = match pairs {
+                None => Some(all.remove(idx-1)),
+                Some(x) => Some(Ast::line_pair(all.remove(idx-1), x)),
+            };
+            idx -= 1;
+        }
+        Ok(pairs)
     }
 
     fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>>
         where F: Fn(&Ast) -> bool
     {
-        self.lines_while_allowing(predicate, vec!())
+        self.lines_while_allowing(predicate, vec!().into())
     }
 
     pub fn parse(&mut self) -> Res<Ast> {

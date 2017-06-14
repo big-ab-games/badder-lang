@@ -1,15 +1,19 @@
 #[macro_use] extern crate log;
+extern crate string_cache;
 
 mod lexer;
 mod parser;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use lexer::Token;
 use lexer::Token::*;
 use parser::*;
 use std::cmp::max;
 use std::usize;
+use std::sync::Arc;
+use std::iter::Iterator;
 
 pub use parser::Parser;
 
@@ -18,11 +22,20 @@ pub type Int = i32;
 
 const MAX_STACK: usize = 50;
 
-#[derive(Debug, Clone)]
 enum FrameData {
     Value(Int),
-    Callable(Box<Ast>),
+    Callable(Arc<Ast>),
     LoopMarker,
+}
+
+impl fmt::Debug for FrameData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Value(x) => write!(f, "Value({})", x),
+            Callable(_) => write!(f, "Callable"),
+            LoopMarker => write!(f, "LoopMarker"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -56,7 +69,7 @@ fn interprerror<S: Into<String>>(desc: S) -> Result<Int, InterpreterUpFlow> {
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
-            stack: vec!(HashMap::new())
+            stack: vec!(HashMap::new()),
         }
     }
 
@@ -92,6 +105,7 @@ impl Interpreter {
         None
     }
 
+    #[inline]
     fn log_eval(&mut self, ast: &Ast, current_scope: usize, restrict_ref: Option<usize>) {
         match ast {
             &Ast::Line(_,_)|&Ast::LinePair(_,_)|&Ast::Num(_) => (),
@@ -110,7 +124,7 @@ impl Interpreter {
     /// :current_scope the stack frame index currently running in
     /// :restrict_ref optional max frame index referencable
     ///    (not including >= current_scope, which is always ok)
-    fn eval(&mut self, ast: Ast, current_scope: usize, restrict_ref: Option<usize>)
+    fn eval(&mut self, ast: &Ast, current_scope: usize, restrict_ref: Option<usize>)
         -> Result<Int, InterpreterUpFlow> {
         if log_enabled!(log::LogLevel::Trace) {
             self.log_eval(&ast, current_scope, restrict_ref);
@@ -124,54 +138,55 @@ impl Interpreter {
             ($index:expr) => { self.highest_frame_idx($index, current_scope, restrict_ref) };
         }
 
-        match ast {
+        match *ast {
             Ast::Num(Num(x)) => Ok(x),
-            Ast::BinOp(token, left, right) => match token {
-                Pls => Ok(eval!(*left)? + eval!(*right)?),
-                Sub => Ok(eval!(*left)? - eval!(*right)?),
-                Mul => Ok(eval!(*left)? * eval!(*right)?),
-                Mod => Ok(eval!(*left)? % eval!(*right)?),
-                Div => match eval!(*right)? {
+            Ast::BinOp(ref token, ref left, ref right) => match *token {
+                Pls => Ok(eval!(left)? + eval!(right)?),
+                Sub => Ok(eval!(left)? - eval!(right)?),
+                Mul => Ok(eval!(left)? * eval!(right)?),
+                Mod => Ok(eval!(left)? % eval!(right)?),
+                Div => match eval!(right)? {
                     0 => interprerror("Interpreter: Cannot divide by zero"),
-                    divisor => Ok(eval!(*left)? / divisor)
+                    divisor => Ok(eval!(left)? / divisor)
                 },
-                And => match eval!(*left)? {
+                And => match eval!(left)? {
                     0 => Ok(0),
-                    _ => eval!(*right)
+                    _ => eval!(right)
                 },
-                Or => match eval!(*left)? {
-                    0 => eval!(*right),
+                Or => match eval!(left)? {
+                    0 => eval!(right),
                     x => Ok(x)
                 },
-                Is => Ok(bool_to_num(eval!(*left)? == eval!(*right)?)),
-                Gt => Ok(bool_to_num(eval!(*left)? > eval!(*right)?)),
-                Lt => Ok(bool_to_num(eval!(*left)? < eval!(*right)?)),
-                GtEq => Ok(bool_to_num(eval!(*left)? >= eval!(*right)?)),
-                LtEq => Ok(bool_to_num(eval!(*left)? <= eval!(*right)?)),
+                Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
+                Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
+                Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
+                GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
+                LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
                 _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
             },
-            Ast::LeftUnaryOp(Sub, val) => Ok(-eval!(*val)?),
-            Ast::LeftUnaryOp(Not, val) => Ok(match eval!(*val)? {
+            Ast::LeftUnaryOp(Sub, ref val) => Ok(-eval!(val)?),
+            Ast::LeftUnaryOp(Not, ref val) => Ok(match eval!(val)? {
                 0 => 1,
                 _ => 0,
             }),
-            Ast::Assign(id, expr) => {
-                let v = eval!(*expr)?;
+            Ast::Assign(ref id, ref expr) => {
+                let v = eval!(expr)?;
                 self.stack[current_scope].insert(id.clone(), Value(v));
                 Ok(v)
             },
-            Ast::Reassign(id, expr) => {
+            Ast::Reassign(ref id, ref expr) => {
                 // reassign to any parent scope
                 if let Some(idx) = highest_frame_idx!(&id) {
-                    let v = eval!(*expr)?;
+                    let v = eval!(expr)?;
                     *self.stack[idx].get_mut(&id).unwrap() = Value(v);
                     Ok(v)
                 }
                 else {
-                    interprerror(format!("{}, did you mean `var {:?} =`?", self.unknown_id_err(&id), id))
+                    interprerror(format!("{}, did you mean `var {:?} =`?",
+                        self.unknown_id_err(&id), id))
                 }
             },
-            Ast::Refer(id) => {
+            Ast::Refer(ref id) => {
                 if let Some(idx) = highest_frame_idx!(&id) {
                     match self.stack[idx][&id] {
                         Value(v) => Ok(v),
@@ -183,24 +198,24 @@ impl Interpreter {
                     interprerror(self.unknown_id_err(&id))
                 }
             },
-            Ast::If(expr, block, else_line, _) => Ok(match eval!(*expr)? {
-                0 => match else_line {
-                    Some(else_line) => eval!(*else_line)?,
+            Ast::If(ref expr, ref block, ref else_line, _) => Ok(match eval!(expr)? {
+                0 => match *else_line {
+                    Some(ref else_line) => eval!(else_line)?,
                     None => 0,
                 },
                 _ => {
-                    eval!(*block)?;
+                    eval!(block)?;
                     0
                 }
             }),
-            Ast::While(expr, block) => {
-                if eval!(*expr.clone())? == 0 {
+            Ast::While(ref expr, ref block) => {
+                if eval!(expr)? == 0 {
                     return Ok(0);
                 }
                 let loop_token = Id("#loop".into());
                 self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
                 loop {
-                    match eval!(*block.clone()) {
+                    match eval!(block) {
                         Err(err) => match err {
                             LoopBreak => break,
                             LoopContinue => continue,
@@ -208,17 +223,17 @@ impl Interpreter {
                         },
                         Ok(_) => (),
                     }
-                    if eval!(*expr.clone())? == 0 {
+                    if eval!(expr)? == 0 {
                         break;
                     }
                 }
                 self.stack[current_scope].remove(&loop_token);
                 Ok(0)
             },
-            Ast::LoopNav(token) => {
+            Ast::LoopNav(ref token) => {
                 let loop_token = Id("#loop".into());
                 if highest_frame_idx!(&loop_token).is_some() {
-                    match token {
+                    match *token {
                         Break => Err(LoopBreak),
                         Continue => Err(LoopContinue),
                         _ => interprerror(format!("Interpreter: Unknown loop nav `{:?}`", token)),
@@ -228,49 +243,56 @@ impl Interpreter {
                     interprerror(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
                 }
             },
-            Ast::Fun(id, block) => {
+            Ast::Fun(ref id, ref block) => {
                 let top = self.stack.len() - 1;
-                self.stack[top].insert(id, Callable(block));
+                self.stack[top].insert(id.clone(), Callable(block.clone()));
                 Ok(0)
             },
-            Ast::Call(id) => {
+            Ast::Call(ref id) => {
                 if let Some(idx) = highest_frame_idx!(&id) {
-                    warn!("Callable {:?} found at index {}", id, idx);
-                    match self.stack[idx][&id].clone() {
-                        Callable(block) => match self.eval(*block, current_scope+1, Some(idx)) {
-                            Err(FunReturn(value)) => Ok(value),
-                            Ok(_) => Ok(0),
-                            x => x,
-                        },
-                        _ => interprerror(format!("Interpreter: Invalid reference to\
-                            non callable `{:?}`", id)),
+                    let callable_block = {
+                        match &self.stack[idx][&id] {
+                            &Callable(ref block) => block.clone(),
+                            _ => return interprerror(format!("Interpreter: Invalid reference to\
+                                non callable `{:?}`", id)),
+                        }
+                    };
+
+                    match self.eval(&callable_block, current_scope+1, Some(idx)) {
+                        Err(FunReturn(value)) => Ok(value),
+                        Ok(_) => Ok(0),
+                        x => x,
                     }
                 }
                 else {
                     interprerror(self.unknown_id_err(&id))
                 }
             },
-            Ast::Return(expr) => {
-                Err(FunReturn(eval!(*expr)?))
+            Ast::Return(ref expr) => {
+                Err(FunReturn(eval!(expr)?))
             }
-            Ast::Line(scope, expr) => {
+            Ast::Line(scope, ref expr) => {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
                     return interprerror("stack overflow");
                 }
 
-                while self.stack.get(scope).is_none() {
+                while self.stack.len() < scope + 1 {
                     self.stack.push(HashMap::new());
                 }
-                while self.stack.get(scope + 1).is_some() {
+                while self.stack.len() > scope + 1 {
                     self.stack.pop();
                 }
-                let out = self.eval(*expr, scope, restrict_ref);
-                out
+                self.eval(expr, scope, restrict_ref)
             },
-            Ast::LinePair(line, next) => {
-                eval!(*line)?;
-                Ok(eval!(*next)?)
+            Ast::LinePair(ref line, ref next_line) => {
+                eval!(line)?;
+                let mut next = next_line;
+                while let Ast::LinePair(ref l2, ref l3) = **next {
+                    eval!(l2)?;
+                    next = l3;
+                }
+                eval!(next)
             },
             Ast::Empty => Ok(0),
             _ => interprerror(format!("Interpreter: Unexpected Ast {:?}", ast)),
@@ -278,7 +300,7 @@ impl Interpreter {
     }
 
     pub fn interpret(&mut self, ast: Ast) -> Res<Int> {
-        match self.eval(ast, 0, None) {
+        match self.eval(&ast, 0, None) {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
             Err(err) => panic!(err),
@@ -303,9 +325,15 @@ mod util {
 
     fn eval_within(code: &str, timeout: Duration) -> Res<Int> {
         let (sender, receiver) = mpsc::channel();
-        let code: String = code.into();
+        let before_parse = Instant::now();
+        debug!("parsing...");
+        let code: Ast = Parser::parse_str(code.into())?;
+        debug!("parsed in {:?}, interpreting...", before_parse.elapsed());
+
         thread::spawn(move|| {
-            sender.send(eval(&code)).unwrap();
+            let before_interp = Instant::now();
+            sender.send(Interpreter::new().interpret(code)).unwrap();
+            debug!("interpreted in {:?}", before_interp.elapsed());
         });
 
         let now = Instant::now();
@@ -320,14 +348,16 @@ mod util {
 
     fn print_program_debug(code: &str) -> Res<()> {
         let ast = Parser::parse_str(code)?;
-        println!("Program: \n{}", ast.debug_string());
+        debug!("Program: \n{}", ast.debug_string());
         Ok(())
     }
 
-    pub fn result(code: &str) -> Int {
+    pub fn result(code: &str, debug_output: bool) -> Int {
         let _ = pretty_env_logger::init();
 
-        print_program_debug(code).unwrap();
+        if debug_output {
+            print_program_debug(code).unwrap();
+        }
         eval_within(code, Duration::from_secs(1)).unwrap()
     }
 
@@ -351,12 +381,19 @@ mod util {
     /// Assert a program fails & the error message includes given substrings (case insensitive)
     #[macro_export]
     macro_rules! assert_program {
+        ($( $code:expr );+ => $out:expr, debug_parse=$debug:expr) => {{
+            let mut code = String::new();
+            $(
+                code = code + $code + "\n";
+            )+
+            assert_eq!(util::result(&code, $debug), $out);
+        }};
         ($( $code:expr );+ => $out:expr) => {{
             let mut code = String::new();
             $(
                 code = code + $code + "\n";
             )+
-            assert_eq!(util::result(&code), $out);
+            assert_eq!(util::result(&code, true), $out);
         }};
         ($( $code:expr );+ =>X $( $sub:expr ),+ ) => {
             let mut code = String::new();
@@ -371,6 +408,27 @@ mod util {
                     format!("Substring:`{}` not in error: {}", $sub, err));
             )+
         };
+    }
+}
+
+#[cfg(test)]
+mod fitness {
+    use super::*;
+
+    #[test]
+    fn long_program() {
+        assert_program!("var init";
+                        "fun inc()";
+                        &"    init += 1\n".repeat(10000);
+                        "inc()";
+                        "init" => 10000, debug_parse = false); // debug parse output is 10000 lines
+    }
+
+    #[test]
+    fn recursive_overflow() {
+        assert_program!("fun rec()";
+                        "    rec()";
+                        "rec()" =>X "stack overflow");
     }
 }
 
@@ -416,13 +474,6 @@ mod functions {
                         // call in scope 3 should have access to scopes >3 and <=2 (def scope)
                         "            out = a_and_b_p1()"; // should refer to a(scope1), b(scope2)
                         "out" => 19);
-    }
-
-    #[test]
-    fn stack_overflow() {
-        assert_program!("fun recurse()";
-                        "    recurse()";
-                        "recurse()" =>X "stack overflow");
     }
 }
 
