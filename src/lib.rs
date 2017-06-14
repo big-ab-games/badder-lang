@@ -9,11 +9,14 @@ use lexer::Token;
 use lexer::Token::*;
 use parser::*;
 use std::cmp::max;
+use std::usize;
 
 pub use parser::Parser;
 
 pub type Res<T> = Result<T, String>;
 pub type Int = i32;
+
+const MAX_STACK: usize = 50;
 
 #[derive(Debug, Clone)]
 enum FrameData {
@@ -113,6 +116,7 @@ impl Interpreter {
             self.log_eval(&ast, current_scope, restrict_ref);
         }
 
+        // syntax noise reducers/shortcuts
         macro_rules! eval {
             ($expr:expr) => { self.eval($expr, current_scope, restrict_ref) };
         }
@@ -251,6 +255,10 @@ impl Interpreter {
             }
             Ast::Line(scope, expr) => {
                 let scope = max(current_scope, scope);
+                if scope > MAX_STACK {
+                    return interprerror("stack overflow");
+                }
+
                 while self.stack.get(scope).is_none() {
                     self.stack.push(HashMap::new());
                 }
@@ -408,6 +416,13 @@ mod functions {
                         // call in scope 3 should have access to scopes >3 and <=2 (def scope)
                         "            out = a_and_b_p1()"; // should refer to a(scope1), b(scope2)
                         "out" => 19);
+    }
+
+    #[test]
+    fn stack_overflow() {
+        assert_program!("fun recurse()";
+                        "    recurse()";
+                        "recurse()" =>X "stack overflow");
     }
 }
 
