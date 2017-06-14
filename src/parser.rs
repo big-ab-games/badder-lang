@@ -20,6 +20,12 @@ pub enum Ast {
     While(Box<Ast>, Box<Ast>),
     /// LoopNav(break|continue)
     LoopNav(Token),
+    /// Fun(function-id, block) defines a function
+    Fun(Token, Box<Ast>),
+    // Return(expr) used inside function blocks
+    Return(Box<Ast>),
+    /// Call(function-id)
+    Call(Token),
     /// Line(scope, expr)
     Line(usize, Box<Ast>),
     /// LinePair(line, next_line)
@@ -71,6 +77,8 @@ impl Ast {
                 expr.debug_string(), block.debug_string(), elif.debug_string()),
             &Ast::While(ref expr, ref block) => format!("While({})\n{}",
                 expr.debug_string(), block.debug_string()),
+            &Ast::Fun(ref id, ref block) => format!("DefFun({:?})\n{}",
+                id, block.debug_string()),
             x => format!("{:?}", x),
         }
     }
@@ -153,10 +161,19 @@ impl<'a> Parser<'a> {
         if self.current_token == OpnBrace {
             return self.braced();
         }
-        Ok(match self.consume_any(&[Num(0), Id("identifier".into())])? {
-            n @ Num(_) => Ast::Num(n),
-            id @ Id(_) => Ast::Refer(id),
-            _ => unreachable!(),
+        Ok(if let Some(token) = self.consume_maybe(Num(0))? {
+            Ast::Num(token)
+        }
+        else {
+            let id = self.consume(Id("identifier".into()))?;
+            if self.current_token == OpnBrace {
+                self.consume(OpnBrace)?;
+                self.consume(ClsBrace)?;
+                Ast::Call(id)
+            }
+            else {
+                Ast::Refer(id)
+            }
         })
     }
 
@@ -305,9 +322,43 @@ impl<'a> Parser<'a> {
         Ok(Ast::While(expr.into(), block.unwrap().into()))
     }
 
+    // fun id()
+    //     line+
+    fn line_fun(&mut self, scope: usize) -> Res<Ast> {
+        self.consume(Fun)?;
+        let id = self.consume(Id("identifier".into()))?;
+        self.consume(OpnBrace)?;
+        self.consume(ClsBrace)?;
+        self.consume(Eol)?;
+        let block = self.lines_while_allowing(|l| match l {
+            &Ast::Line(line_scope, _) => line_scope > scope,
+            _ => false
+        }, vec!(Return))?;
+        if block.is_none() {
+            return Err(format!("Parser: {} Expected line after `fun` declaration with exactly +1 indent",
+                self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
+        }
+        Ok(Ast::Fun(id, block.unwrap().into()))
+    }
+
     fn line_expr(&mut self, scope: usize, allow: Vec<Token>) -> Res<Ast> {
-        if let Some(token) = self.consume_any_maybe(&[Break, Continue])? {
-            return Ok(Ast::LoopNav(token));
+        if allow.contains(&self.current_token) {
+            if let Some(token) = self.consume_any_maybe(&[Break, Continue])? {
+                return Ok(Ast::LoopNav(token));
+            }
+            if self.consume_maybe(Return)?.is_some() {
+                let expr = {
+                    if self.consume_maybe(Eol)?.is_none() {
+                        let return_expr = self.expr()?;
+                        self.consume(Eol)?;
+                        return_expr
+                    }
+                    else {
+                        Ast::num(0)
+                    }
+                };
+                return Ok(Ast::Return(expr.into()));
+            }
         }
 
         // var id = expr
@@ -349,6 +400,11 @@ impl<'a> Parser<'a> {
         //     line+
         if self.current_token == Loop || self.current_token == While {
             return self.line_loop(scope);
+        }
+        // fun id()
+        //     line+
+        if self.current_token == Fun {
+            return self.line_fun(scope);
         }
         // expr
         if self.current_token != Eof {

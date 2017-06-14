@@ -5,9 +5,14 @@ line    : indent* expr Eol|Eof
         | indent* id Ass expr Eol|Eof
         | indent* id (Pls|Sub|Mul|Div)Ass expr Eol|Eof
         | indent* If expr Eol block(+1) (Else (if expr)? Eol block(+1))+
-        | indent* Loop Eol block(+1)
-        | indent* While expr Eol block(+1)
+        | indent* Loop Eol block(+1, 'block', 'continue')
+        | indent* While expr Eol block(+1, 'break', 'continue')
+        | indent* Fun id OpnBrace ClsBrace Eol block(+1, 'return')
         | indent* Eol|Eof
++
+break   : indent* break Eol
+continue: indent* continue Eol
+return  : indent* return expr? Eol
 
 expr    : ored
 ored    : anded (Or anded)*
@@ -20,6 +25,7 @@ multied : signed (Mul|Mod|Div signed)*
 signed  : -?num
 num     : digit
         | id
+        | id()
         | OpnBrace expr ClsBrace
 id      : non-digit(alphanumeric,_)*
 
