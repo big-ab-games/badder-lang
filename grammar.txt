@@ -22,11 +22,11 @@ compared: added (is not? added)?
         | added (>|<|>=|<= added)?
 added   : timesed (Pls|Sub timesed)*
 multied : signed (Mul|Mod|Div signed)*
-signed  : -?num
+signed  : -?dotcall
+dotcall : num (Dot id OpnBrace (expr Comma?)* ClsBrace)*
 num     : digit
         | id
         | id OpnBrace (expr Comma?)* ClsBrace
-        | id Dot id OpnBrace (expr Comma?)* ClsBrace
         | OpnBrace expr ClsBrace
 id      : non-digit(alphanumeric,_)*
 

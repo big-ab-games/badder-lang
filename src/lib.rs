@@ -35,8 +35,24 @@ impl fmt::Debug for FrameData {
         match *self
         {
             Value(x) => write!(f, "Value({})", x),
-            Callable(..) => write!(f, "Callable"),
+            Callable(ref args, ..) => write!(f, "Callable({} arg)", args.len()),
             LoopMarker => write!(f, "LoopMarker"),
+        }
+    }
+}
+
+impl FrameData {
+    fn desc(&self, id: &Token) -> String {
+        match *self {
+            Value(_) => format!("var {:?}", id),
+            Callable(ref args, ..) =>
+                format!("{:?}({})",
+                        id,
+                        args.iter()
+                            .map(|a| format!("{:?}",a))
+                            .fold(String::new(), |all,n| all + &n)
+                ),
+            _ => "_".into(),
         }
     }
 }
@@ -179,6 +195,13 @@ impl Interpreter {
             }),
             Ast::Assign(ref id, ref expr) => {
                 let v = eval!(expr)?;
+                match self.stack[current_scope].get(&id) {
+                    None | Some(&Value(..)) => (), // overwrite
+                    Some(other) => return interprerror(format!(
+                        "Interpreter: Assignment of `{:?}` conflicts with `{}` in same scope",
+                        id,
+                        other.desc(id))),
+                };
                 self.stack[current_scope].insert(id.clone(), Value(v));
                 Ok(v)
             },
@@ -199,7 +222,7 @@ impl Interpreter {
                     match self.stack[idx][&id] {
                         Value(v) => Ok(v),
                         _ => interprerror(format!(
-                            "Interpreter: Invalid reference to non value `{:?}`",
+                            "Interpreter: Invalid reference to non number `{:?}`",
                             id
                         )),
                     }
@@ -259,6 +282,13 @@ impl Interpreter {
             },
             Ast::Fun(ref id, ref args, ref block) => {
                 let top = self.stack.len() - 1;
+                match self.stack[current_scope].get(&id) {
+                    None | Some(&Callable(..)) => (), // overwrite
+                    Some(other) => return interprerror(format!(
+                        "Interpreter: Declaration `fun {:?}` conflicts with `{}` in same scope",
+                        id,
+                        other.desc(id))),
+                };
                 self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
                 Ok(0)
             },
@@ -277,11 +307,8 @@ impl Interpreter {
                     };
                     if args.len() != arg_ids.len() {
                         return interprerror(format!(
-                            "Interpreter: `{:?}({})` called with {} argument{}, expects {}",
-                            id,
-                            arg_ids.iter()
-                                .map(|t| format!("{:?}", t))
-                                .fold("".into(), |all: String, n| all + &n),
+                            "Interpreter: `{}` called with {} argument{}, expects {}",
+                            self.stack[idx][&id].desc(&id),
                             args.len(),
                             if arg_ids.len() > 1 { "s" } else { "" },
                             arg_ids.len(),
@@ -471,6 +498,17 @@ mod fitness {
     }
 }
 
+// #[cfg(test)]
+// mod lists {
+//     use super::*;
+//
+//     #[test]
+//     fn create_list() {
+//         assert_program!("seq nums[]";
+//                         "nums[].contains(23)" => 0);
+//     }
+// }
+
 #[cfg(test)]
 mod functions {
     use super::*;
@@ -558,6 +596,34 @@ mod functions {
         assert_program!("fun divisible_by(num, divisor)";
                         "    num % divisor is 0";
                         "18.divisible_by(6)" => 1);
+    }
+
+    #[test]
+    fn dot_chaining() {
+        assert_program!("fun double(n)";
+                        "    n * 2";
+                        "(5.double().double()).double()" => 40);
+    }
+
+    #[test]
+    fn overwrite_fun_with_fun() {
+        assert_program!("fun f()";
+                        "    1";
+                        "fun f()";
+                        "    2";
+                        "f()" => 2);
+    }
+
+    #[test]
+    fn overwrite_non_fun_err() {
+        assert_program!("var f = 12";
+                        "fun f()";
+                        "    2";
+                        "f()" =>X "conflicts with `var f` in same scope");
+        assert_program!("fun f()";
+                        "    2";
+                        "var f = 12";
+                        "f" =>X "conflicts with `f()` in same scope");
     }
 }
 

@@ -214,45 +214,42 @@ impl<'a> Parser<'a> {
     }
 
     fn num(&mut self) -> Res<Ast> {
-        if self.current_token == OpnBrace {
-            return self.braced();
-        }
-        Ok(if let Some(token) = self.consume_maybe(Num(0))? {
-            let n = Ast::Num(token);
-            if self.consume_maybe(Dot)?.is_some() {
-                // n.f() fun call
-                let id = self.consume(Id("identifier".into()))?;
-                self.fun_call(Some(n), id)?
+        Ok({
+            if self.current_token == OpnBrace {
+                self.braced()?
+            }
+            else if let Some(token) = self.consume_maybe(Num(0))? {
+                Ast::Num(token)
             }
             else {
-                n
-            }
-        }
-        else {
-            // refer to an id
-            let id = self.consume(Id("identifier".into()))?;
-            if self.current_token == OpnBrace || self.current_token == Dot {
-                // function call
-                let left = if self.consume_maybe(Dot)?.is_some() {
-                    Some(self.expr()?)
+                // refer to an id
+                let id = self.consume(Id("identifier".into()))?;
+                if self.current_token == OpnBrace {
+                    // function call
+                    self.fun_call(None, id)?
                 }
                 else {
-                    None
-                };
-                self.fun_call(left, id)?
-            }
-            else {
-                Ast::Refer(id)
+                    Ast::Refer(id)
+                }
             }
         })
+    }
+
+    fn dotcall(&mut self) -> Res<Ast> {
+        let mut out = self.num()?;
+        while self.consume_maybe(Dot)?.is_some() {
+            let fun_id = self.consume(Id("identifier".into()))?;
+            out = self.fun_call(Some(out), fun_id)?;
+        }
+        Ok(out)
     }
 
     fn signed(&mut self) -> Res<Ast> {
         if self.current_token == Sub {
             self.next_token()?;
-            return Ok(Ast::left_unary_op(Sub, self.num()?));
+            return Ok(Ast::left_unary_op(Sub, self.dotcall()?));
         }
-        self.num()
+        self.dotcall()
     }
 
     fn multied(&mut self) -> Res<Ast> {
