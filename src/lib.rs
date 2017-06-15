@@ -1,22 +1,22 @@
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate string_cache;
 
 mod lexer;
 mod parser;
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt;
 use lexer::Token;
 use lexer::Token::*;
 use parser::*;
+pub use parser::Parser;
 use std::cmp::max;
-use std::usize;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
 use std::iter::Iterator;
 use std::mem;
-
-pub use parser::Parser;
+use std::sync::Arc;
+use std::usize;
 
 pub type Res<T> = Result<T, String>;
 pub type Int = i32;
@@ -32,9 +32,10 @@ enum FrameData {
 
 impl fmt::Debug for FrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
+        match *self
+        {
             Value(x) => write!(f, "Value({})", x),
-            Callable(_, _) => write!(f, "Callable"),
+            Callable(..) => write!(f, "Callable"),
             LoopMarker => write!(f, "LoopMarker"),
         }
     }
@@ -48,8 +49,8 @@ enum InterpreterUpFlow {
     FunReturn(Int),
 }
 
-use InterpreterUpFlow::*;
 use FrameData::*;
+use InterpreterUpFlow::*;
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -70,28 +71,25 @@ fn interprerror<S: Into<String>>(desc: S) -> Result<Int, InterpreterUpFlow> {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter {
-            stack: vec!(HashMap::new()),
-        }
+        Interpreter { stack: vec![HashMap::new()] }
     }
 
     fn unknown_id_err(&mut self, id: &Token) -> String {
-        let keys: HashSet<&lexer::Token> = self.stack.iter()
-            .flat_map(|m| m.keys())
-            .collect();
+        let keys: HashSet<&lexer::Token> = self.stack.iter().flat_map(|m| m.keys()).collect();
         if keys.is_empty() {
             format!("Interpreter: id `{:?}` not found in scope", id)
         }
         else {
             assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
-            format!("Interpreter: id `{:?}` not found in scope, {:?} available",
-                id, keys)
+            format!("Interpreter: id `{:?}` not found in scope, {:?} available", id, keys)
         }
     }
 
-    fn highest_frame_idx(&self, key: &lexer::Token, current_scope: usize, restrict_ref: Option<usize>)
-        -> Option<usize>
-    {
+    fn highest_frame_idx(&self,
+                         key: &lexer::Token,
+                         current_scope: usize,
+                         restrict_ref: Option<usize>)
+                         -> Option<usize> {
         let mut idx = current_scope;
         loop {
             let restricted = match restrict_ref {
@@ -101,7 +99,7 @@ impl Interpreter {
             if !restricted && self.stack[idx].contains_key(key) {
                 return Some(idx);
             }
-            if idx == 0 { break }
+            if idx == 0 { break; }
             idx -= 1;
         }
         None
@@ -110,7 +108,7 @@ impl Interpreter {
     #[inline]
     fn log_eval(&mut self, ast: &Ast, current_scope: usize, restrict_ref: Option<usize>) {
         match ast {
-            &Ast::Line(_,_)|&Ast::LinePair(_,_)|&Ast::Num(_) => (),
+            &Ast::Line(..) | &Ast::LinePair(..) | &Ast::Num(_) => (),
             _ => {
                 let restrict = match restrict_ref {
                     Some(restriction) => format!(", refer <= {}", restriction),
@@ -127,7 +125,7 @@ impl Interpreter {
     /// :restrict_ref optional max frame index referencable
     ///    (not including >= current_scope, which is always ok)
     fn eval(&mut self, ast: &Ast, current_scope: usize, restrict_ref: Option<usize>)
-        -> Result<Int, InterpreterUpFlow> {
+            -> Result<Int, InterpreterUpFlow> {
         if log_enabled!(log::LogLevel::Trace) {
             self.log_eval(&ast, current_scope, restrict_ref);
         }
@@ -142,29 +140,37 @@ impl Interpreter {
 
         match *ast {
             Ast::Num(Num(x)) => Ok(x),
-            Ast::BinOp(ref token, ref left, ref right) => match *token {
-                Pls => Ok(eval!(left)? + eval!(right)?),
-                Sub => Ok(eval!(left)? - eval!(right)?),
-                Mul => Ok(eval!(left)? * eval!(right)?),
-                Mod => Ok(eval!(left)? % eval!(right)?),
-                Div => match eval!(right)? {
-                    0 => interprerror("Interpreter: Cannot divide by zero"),
-                    divisor => Ok(eval!(left)? / divisor)
-                },
-                And => match eval!(left)? {
-                    0 => Ok(0),
-                    _ => eval!(right)
-                },
-                Or => match eval!(left)? {
-                    0 => eval!(right),
-                    x => Ok(x)
-                },
-                Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
-                Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
-                Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
-                GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
-                LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
-                _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
+            Ast::BinOp(ref token, ref left, ref right) => {
+                match *token {
+                    Pls => Ok(eval!(left)? + eval!(right)?),
+                    Sub => Ok(eval!(left)? - eval!(right)?),
+                    Mul => Ok(eval!(left)? * eval!(right)?),
+                    Mod => Ok(eval!(left)? % eval!(right)?),
+                    Div => {
+                        match eval!(right)? {
+                            0 => interprerror("Interpreter: Cannot divide by zero"),
+                            divisor => Ok(eval!(left)? / divisor),
+                        }
+                    },
+                    And => {
+                        match eval!(left)? {
+                            0 => Ok(0),
+                            _ => eval!(right),
+                        }
+                    },
+                    Or => {
+                        match eval!(left)? {
+                            0 => eval!(right),
+                            x => Ok(x),
+                        }
+                    },
+                    Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
+                    Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
+                    Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
+                    GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
+                    LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
+                    _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
+                }
             },
             Ast::LeftUnaryOp(Sub, ref val) => Ok(-eval!(val)?),
             Ast::LeftUnaryOp(Not, ref val) => Ok(match eval!(val)? {
@@ -192,8 +198,10 @@ impl Interpreter {
                 if let Some(idx) = highest_frame_idx!(&id) {
                     match self.stack[idx][&id] {
                         Value(v) => Ok(v),
-                        _ => interprerror(format!("Interpreter: Invalid reference to non value\
-                            `{:?}`", id)),
+                        _ => interprerror(format!(
+                            "Interpreter: Invalid reference to non value `{:?}`",
+                            id
+                        )),
                     }
                 }
                 else {
@@ -201,14 +209,16 @@ impl Interpreter {
                 }
             },
             Ast::If(ref expr, ref block, ref else_line, _) => Ok(match eval!(expr)? {
-                0 => match *else_line {
-                    Some(ref else_line) => eval!(else_line)?,
-                    None => 0,
+                0 => {
+                    match *else_line {
+                        Some(ref else_line) => eval!(else_line)?,
+                        None => 0,
+                    }
                 },
                 _ => {
                     eval!(block)?;
                     0
-                }
+                },
             }),
             Ast::While(ref expr, ref block) => {
                 if eval!(expr)? == 0 {
@@ -218,10 +228,12 @@ impl Interpreter {
                 self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
                 loop {
                     match eval!(block) {
-                        Err(err) => match err {
-                            LoopBreak => break,
-                            LoopContinue => continue,
-                            e => return Err(e),
+                        Err(err) => {
+                            match err {
+                                LoopBreak => break,
+                                LoopContinue => continue,
+                                e => return Err(e),
+                            }
                         },
                         Ok(_) => (),
                     }
@@ -255,13 +267,20 @@ impl Interpreter {
                     let (mut arg_ids, callable_block) = {
                         match &self.stack[idx][&id] {
                             &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
-                            _ => return interprerror(format!("Interpreter: Invalid reference to\
-                                non callable `{:?}`", id)),
+                            _ => {
+                                return interprerror(format!(
+                                    "Interpreter: Invalid reference to non callable `{:?}`",
+                                    id
+                                ))
+                            },
                         }
                     };
                     if args.len() != arg_ids.len() {
-                        return interprerror(format!("Interpreter: Wrong number of arguments in\
-                            function call to `{:?}`", id));
+                        return interprerror(format!(
+                            "Interpreter: Wrong number of arguments in\
+                            function call to `{:?}`",
+                            id
+                        ));
                     }
 
                     // construct new function call stack frame
@@ -271,7 +290,7 @@ impl Interpreter {
                     }
                     self.stack.push(f_frame);
 
-                    let out = match self.eval(&callable_block, current_scope+1, Some(idx)) {
+                    let out = match self.eval(&callable_block, current_scope + 1, Some(idx)) {
                         Err(FunReturn(value)) => Ok(value),
                         Ok(_) => Ok(0),
                         x => x,
@@ -285,9 +304,7 @@ impl Interpreter {
                     interprerror(self.unknown_id_err(&id))
                 }
             },
-            Ast::Return(ref expr) => {
-                Err(FunReturn(eval!(expr)?))
-            }
+            Ast::Return(ref expr) => Err(FunReturn(eval!(expr)?)),
             Ast::Line(scope, ref expr) => {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
@@ -347,7 +364,7 @@ mod util {
         let code: Ast = Parser::parse_str(code.into())?;
         debug!("parsed in {:?}, interpreting...", before_parse.elapsed());
 
-        thread::spawn(move|| {
+        thread::spawn(move || {
             let before_interp = Instant::now();
             sender.send(Interpreter::new().interpret(code)).unwrap();
             debug!("interpreted in {:?}", before_interp.elapsed());

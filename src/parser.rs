@@ -1,9 +1,9 @@
-use std::rc::Rc;
-use std::sync::Arc;
+use super::{Int, Res};
 use lexer::*;
 use lexer::Token::*;
-use super::{Res, Int};
 use std::fmt;
+use std::rc::Rc;
+use std::sync::Arc;
 use string_cache::DefaultAtom as Atom;
 
 /// Abstract syntax tree
@@ -46,15 +46,16 @@ impl fmt::Debug for Ast {
             Ast::Assign(ref t, ref expr) => write!(f, "Assign({:?},{:?})", t, expr),
             Ast::Reassign(ref t, ref expr) => write!(f, "Reassign({:?},{:?})", t, expr),
             Ast::Refer(ref t) => write!(f, "Refer({:?})", t),
-            Ast::If(ref bool_expr, _, _, is_else) => write!(f, "{}If({:?},_,_)",
-                if is_else {"Else"} else {""}, bool_expr),
+            Ast::If(ref bool_expr, _, _, is_else) => {
+                write!(f, "{}If({:?},_,_)", if is_else { "Else" } else { "" }, bool_expr)
+            },
             Ast::While(ref bool_expr, _) => write!(f, "While({:?},_)", bool_expr),
             Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
             Ast::Fun(ref t, ref args, _) => write!(f, "Fun({:?},{:?},_)", t, args),
             Ast::Return(ref val) => write!(f, "Return({:?})", val),
             Ast::Call(ref t, ref args) => write!(f, "Call({:?},{:?})", t, args),
             Ast::Line(ref scope, _) => write!(f, "Line({},_)", scope),
-            Ast::LinePair(_, _) => write!(f, "LinePair(_,_)"),
+            Ast::LinePair(..) => write!(f, "LinePair(_,_)"),
             Ast::Empty => write!(f, "Empty"),
         }
     }
@@ -75,7 +76,7 @@ impl Ast {
 
     pub fn line_pair<A: Into<Box<Ast>>>(before: A, after: A) -> Ast {
         let line = before.into();
-        if let Ast::LinePair(_, _) = *line {
+        if let Ast::LinePair(..) = *line {
             panic!("LinePair left val must not be a LinePair");
         }
         Ast::LinePair(line, after.into())
@@ -104,16 +105,17 @@ impl Ast {
                 }
                 out + &next.debug_string()
             },
-            &Ast::Line(scope, ref expr) => format!("-{}{}> {}",
-                scope, "-".repeat(scope), expr.debug_string()),
-            &Ast::If(ref expr, ref block, None, _) => format!("If({})\n{}",
-                expr.debug_string(), block.debug_string()),
-            &Ast::If(ref expr, ref block, Some(ref elif), _) => format!("If({})\n{}\nElse{}",
-                expr.debug_string(), block.debug_string(), elif.debug_string()),
-            &Ast::While(ref expr, ref block) => format!("While({})\n{}",
-                expr.debug_string(), block.debug_string()),
-            &Ast::Fun(ref id, ref args, ref block) => format!("DefFun({:?}, {:?})\n{}",
-                id, args, block.debug_string()),
+            &Ast::Line(scope, ref expr) =>
+                format!("-{}{}> {}", scope, "-".repeat(scope), expr.debug_string()),
+            &Ast::If(ref expr, ref block, None, _) => format!("If({})\n{}", expr.debug_string(), block.debug_string()),
+            &Ast::If(ref expr, ref block, Some(ref elif), _) => {
+                format!("If({})\n{}\nElse{}",
+                        expr.debug_string(),
+                        block.debug_string(),
+                        elif.debug_string())
+            },
+            &Ast::While(ref expr, ref block) => format!("While({})\n{}", expr.debug_string(), block.debug_string()),
+            &Ast::Fun(ref id, ref args, ref block) => format!("DefFun({:?}, {:?})\n{}", id, args, block.debug_string()),
             x => format!("{:?}", x),
         }
     }
@@ -161,15 +163,20 @@ impl<'a> Parser<'a> {
             res
         }
         else {
-            let expected = types.iter()
+            let expected = types
+                .iter()
                 .map(|t| match t {
                     &Num(_) => "0-9".to_string(),
-                    token => format!("{:?}", token)
+                    token => format!("{:?}", token),
                 })
                 .collect::<Vec<String>>()
                 .join(",");
-            Err(format!("Parser: {} Expected `{}` got {}",
-                self.lexer.cursor_debug(), expected, self.current_token.long_debug()))
+            Err(format!(
+                "Parser: {} Expected `{}` got {}",
+                self.lexer.cursor_debug(),
+                expected,
+                self.current_token.long_debug()
+            ))
         }
     }
 
@@ -203,7 +210,7 @@ impl<'a> Parser<'a> {
             let id = self.consume(Id("identifier".into()))?;
             if self.current_token == OpnBrace {
                 self.consume(OpnBrace)?;
-                let mut args = vec!();
+                let mut args = vec![];
                 while self.current_token != ClsBrace {
                     args.push(self.expr()?);
                     if self.consume_maybe(Comma)?.is_none() {
@@ -313,9 +320,12 @@ impl<'a> Parser<'a> {
             }
             else {
                 self.consume(Else)?;
-                (self.consume_maybe(If)?
-                    .map(|_| self.expr())
-                    .unwrap_or_else(|| Ok(Ast::Num(Num(1))))?, true)
+                (
+                    self.consume_maybe(If)?.map(|_| self.expr()).unwrap_or_else(
+                        || Ok(Ast::Num(Num(1))),
+                    )?,
+                    true,
+                )
             }
         };
         self.consume(Eol)?;
@@ -324,13 +334,18 @@ impl<'a> Parser<'a> {
             new_allow.push(Else);
             allow = new_allow.into();
         }
-        let block = self.lines_while_allowing(|l| match l {
-            &Ast::Line(line_scope, _) => line_scope > scope,
-            _ => false
-        }, allow)?;
+        let block = self.lines_while_allowing(
+            |l| match l {
+                &Ast::Line(line_scope, _) => line_scope > scope,
+                _ => false,
+            },
+            allow,
+        )?;
         if block.is_none() {
-            return Err(format!("Parser: {} Expected line after `if,else` with exactly +1 indent",
-                self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
+            return Err(format!(
+                "Parser: {} Expected line after `if,else` with exactly +1 indent",
+                self.lexer.cursor_debug()
+            )); // TODO line numbers dodgy from unused_lines processing
         }
         // else will be in unused_lines as they would mark the end of an if block
         if let Some(line) = self.unused_lines.pop() {
@@ -355,13 +370,18 @@ impl<'a> Parser<'a> {
             }
         };
         self.consume(Eol)?;
-        let block = self.lines_while_allowing(|l| match l {
-            &Ast::Line(line_scope, _) => line_scope > scope,
-            _ => false
-        }, vec!(Break, Continue).into())?;
+        let block = self.lines_while_allowing(
+            |l| match l {
+                &Ast::Line(line_scope, _) => line_scope > scope,
+                _ => false,
+            },
+            vec![Break, Continue].into(),
+        )?;
         if block.is_none() {
-            return Err(format!("Parser: {} Expected line after `loop,while,for` with exactly +1 indent",
-                self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
+            return Err(format!(
+                "Parser: {} Expected line after `loop,while,for` with exactly +1 indent",
+                self.lexer.cursor_debug()
+            )); // TODO line numbers dodgy from unused_lines processing
         }
         Ok(Ast::While(expr.into(), block.unwrap().into()))
     }
@@ -373,7 +393,7 @@ impl<'a> Parser<'a> {
         let id_name: Atom = "identifier".into();
         let id = self.consume(Id(id_name.clone()))?;
         self.consume(OpnBrace)?;
-        let mut arg_ids = vec!();
+        let mut arg_ids = vec![];
         while let Some(arg) = self.consume_maybe(Id(id_name.clone()))? {
             arg_ids.push(arg);
             if self.consume_maybe(Comma)?.is_none() {
@@ -382,13 +402,18 @@ impl<'a> Parser<'a> {
         }
         self.consume(ClsBrace)?;
         self.consume(Eol)?;
-        let block = self.lines_while_allowing(|l| match l {
-            &Ast::Line(line_scope, _) => line_scope > scope,
-            _ => false
-        }, vec!(Return).into())?;
+        let block = self.lines_while_allowing(
+            |l| match l {
+                &Ast::Line(line_scope, _) => line_scope > scope,
+                _ => false,
+            },
+            vec![Return].into(),
+        )?;
         if block.is_none() {
-            return Err(format!("Parser: {} Expected line after `fun` declaration with exactly +1 indent",
-                self.lexer.cursor_debug())); // TODO line numbers dodgy from unused_lines processing
+            return Err(format!(
+                "Parser: {} Expected line after `fun` declaration with exactly +1 indent",
+                self.lexer.cursor_debug()
+            )); // TODO line numbers dodgy from unused_lines processing
         }
         Ok(Ast::Fun(id, arg_ids, block.unwrap().into()))
     }
@@ -479,19 +504,20 @@ impl<'a> Parser<'a> {
             match token {
                 Indent(x) => scope = x,
                 Eol => scope = 0, // reset scope, and skip empty lines
-                _ => unreachable!()
+                _ => unreachable!(),
             };
         }
         Ok(match self.line_expr(scope, allow)? {
             Ast::Empty => Ast::Empty,
-            ast => Ast::Line(scope, ast.into())
+            ast => Ast::Line(scope, ast.into()),
         })
     }
 
-    fn lines_while_allowing<F>(&mut self, predicate: F, allow: Rc<Vec<Token>>) -> Res<Option<Ast>>
+    fn lines_while_allowing<F>(&mut self, predicate: F, allow: Rc<Vec<Token>>)
+        -> Res<Option<Ast>>
         where F: Fn(&Ast) -> bool
     {
-        let mut all = vec!();
+        let mut all = vec![];
         let mut line = self.indented_line(allow.clone())?;
         while line != Ast::Empty && predicate(&line) {
             all.push(line);
@@ -504,18 +530,16 @@ impl<'a> Parser<'a> {
 
         while idx != 0 {
             pairs = match pairs {
-                None => Some(all.remove(idx-1)),
-                Some(x) => Some(Ast::line_pair(all.remove(idx-1), x)),
+                None => Some(all.remove(idx - 1)),
+                Some(x) => Some(Ast::line_pair(all.remove(idx - 1), x)),
             };
             idx -= 1;
         }
         Ok(pairs)
     }
 
-    fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>>
-        where F: Fn(&Ast) -> bool
-    {
-        self.lines_while_allowing(predicate, vec!().into())
+    fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>> where F: Fn(&Ast) -> bool {
+        self.lines_while_allowing(predicate, vec![].into())
     }
 
     pub fn parse(&mut self) -> Res<Ast> {

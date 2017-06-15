@@ -1,7 +1,7 @@
-use std::str::Chars;
-use std::iter::Peekable;
+use super::{Int, Res};
 use std::fmt;
-use super::{Res, Int};
+use std::iter::Peekable;
+use std::str::Chars;
 use string_cache::DefaultAtom as Atom;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
@@ -136,7 +136,7 @@ impl Token {
 
     fn is_valid_for_op_ass(&self) -> bool {
         match *self {
-            Pls|Sub|Mul|Div => true,
+            Pls | Sub | Mul | Div => true,
             _ => false,
         }
     }
@@ -144,7 +144,7 @@ impl Token {
     pub fn matches(&self, token: &Token) -> bool {
         match *self {
             Num(_) => if let Num(_) = *token { true } else { false },
-            Id(_) =>  if let Id(_) = *token { true } else { false },
+            Id(_) => if let Id(_) = *token { true } else { false },
             Indent(_) => if let Indent(_) = *token { true } else { false },
             ref me => me == token,
         }
@@ -154,8 +154,9 @@ impl Token {
         match *self {
             Num(x) => format!("number `{}`", x),
             Id(ref id) => format!("id `{}`", id),
-            Pls|Sub|Mul|Div|OpnBrace|ClsBrace|Ass|OpAss(_)|Gt|Lt|GtEq|LtEq
-                => format!("operator `{:?}`", self),
+            Pls | Sub | Mul | Div | OpnBrace | ClsBrace | Ass | OpAss(_) | Gt | Lt | GtEq | LtEq => {
+                format!("operator `{:?}`", self)
+            },
             Indent(_) => format!("indent {:?}", self),
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
@@ -309,8 +310,10 @@ impl<'a> Lexer<'a> {
                         self.next_char();
                     }
 
-                    return Err(format!("Lexer: {} Invalid indent must be multiple of 4 spaces",
-                        self.cursor_debug()));
+                    return Err(format!(
+                        "Lexer: {} Invalid indent must be multiple of 4 spaces",
+                        self.cursor_debug()
+                    ));
                 }
                 return Ok(Indent(spaces / 4));
             }
@@ -330,8 +333,9 @@ impl<'a> Lexer<'a> {
                 return match number_str.parse() {
                     Ok(n) => Ok(Num(n)),
                     Err(e) => Err(format!("Lexer: {} could not parse number: {}",
-                        self.cursor_debug(), e)),
-                }
+                                          self.cursor_debug(),
+                                          e)),
+                };
             }
 
             // non-digit as here
