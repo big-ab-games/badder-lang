@@ -26,6 +26,7 @@ signed  : -?num
 num     : digit
         | id
         | id OpnBrace (expr Comma?)* ClsBrace
+        | id Dot id OpnBrace (expr Comma?)* ClsBrace
         | OpnBrace expr ClsBrace
 id      : non-digit(alphanumeric,_)*
 

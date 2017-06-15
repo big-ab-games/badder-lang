@@ -199,26 +199,47 @@ impl<'a> Parser<'a> {
         self.consume_any_maybe(&[t])
     }
 
+    fn fun_call(&mut self, left: Option<Ast>, id: Token) -> Res<Ast> {
+        // function call
+        let mut args = left.map(|a| vec![a]).unwrap_or_else(|| vec![]);
+        self.consume(OpnBrace)?;
+        while self.current_token != ClsBrace {
+            args.push(self.expr()?);
+            if self.consume_maybe(Comma)?.is_none() {
+                break;
+            }
+        }
+        self.consume(ClsBrace)?;
+        Ok(Ast::Call(id, args))
+    }
+
     fn num(&mut self) -> Res<Ast> {
         if self.current_token == OpnBrace {
             return self.braced();
         }
         Ok(if let Some(token) = self.consume_maybe(Num(0))? {
-            Ast::Num(token)
+            let n = Ast::Num(token);
+            if self.consume_maybe(Dot)?.is_some() {
+                // n.f() fun call
+                let id = self.consume(Id("identifier".into()))?;
+                self.fun_call(Some(n), id)?
+            }
+            else {
+                n
+            }
         }
         else {
+            // refer to an id
             let id = self.consume(Id("identifier".into()))?;
-            if self.current_token == OpnBrace {
-                self.consume(OpnBrace)?;
-                let mut args = vec![];
-                while self.current_token != ClsBrace {
-                    args.push(self.expr()?);
-                    if self.consume_maybe(Comma)?.is_none() {
-                        break;
-                    }
+            if self.current_token == OpnBrace || self.current_token == Dot {
+                // function call
+                let left = if self.consume_maybe(Dot)?.is_some() {
+                    Some(self.expr()?)
                 }
-                self.consume(ClsBrace)?;
-                Ast::Call(id, args)
+                else {
+                    None
+                };
+                self.fun_call(left, id)?
             }
             else {
                 Ast::Refer(id)

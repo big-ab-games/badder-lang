@@ -47,6 +47,7 @@ pub enum Token {
     Fun,
     Return,
     Comma,
+    Dot,
 }
 
 use lexer::Token::*;
@@ -87,6 +88,7 @@ impl fmt::Debug for Token {
             Fun => write!(f, "fun"),
             Return => write!(f, "return"),
             Comma => write!(f, ","),
+            Dot => write!(f, "."),
             Indent(i) => write!(f, "'    '*{}", i),
             Id(ref id) => write!(f, "{}", id),
         }
@@ -107,6 +109,7 @@ impl Token {
             '<' => Some(Lt),
             '%' => Some(Mod),
             ',' => Some(Comma),
+            '.' => Some(Dot),
             _ => None,
         }
     }
@@ -161,6 +164,7 @@ impl Token {
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
             Comma => "`,`".into(),
+            Dot => "`.`".into(),
             _ => format!("keyword `{:?}`", self),
         }
     }

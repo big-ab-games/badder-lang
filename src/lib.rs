@@ -548,6 +548,17 @@ mod functions {
                         "    fib(n-1) + fib(n-2)";
                         "fib(12)" => 144);
     }
+
+    #[test]
+    fn dot_call_style() {
+        assert_program!("fun is_even(num)";
+                        "    num % 2 is 0";
+                        "12.is_even()" => 1);
+
+        assert_program!("fun divisible_by(num, divisor)";
+                        "    num % divisor is 0";
+                        "18.divisible_by(6)" => 1);
+    }
 }
 
 #[cfg(test)]
