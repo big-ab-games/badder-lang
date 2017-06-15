@@ -10,7 +10,7 @@ six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 fun fib(n)
     if n < 3
         return 1
-    return fib(n-1) + fib(n-2)
+    fib(n-1) + fib(n-2)
 
 var six = fib(6) - fib(3)
 

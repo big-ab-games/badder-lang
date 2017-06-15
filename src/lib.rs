@@ -277,9 +277,14 @@ impl Interpreter {
                     };
                     if args.len() != arg_ids.len() {
                         return interprerror(format!(
-                            "Interpreter: Wrong number of arguments in\
-                            function call to `{:?}`",
-                            id
+                            "Interpreter: `{:?}({})` called with {} argument{}, expects {}",
+                            id,
+                            arg_ids.iter()
+                                .map(|t| format!("{:?}", t))
+                                .fold("".into(), |all: String, n| all + &n),
+                            args.len(),
+                            if arg_ids.len() > 1 { "s" } else { "" },
+                            arg_ids.len(),
                         ));
                     }
 
@@ -292,7 +297,7 @@ impl Interpreter {
 
                     let out = match self.eval(&callable_block, current_scope + 1, Some(idx)) {
                         Err(FunReturn(value)) => Ok(value),
-                        Ok(_) => Ok(0),
+                        Ok(x) => Ok(x),
                         x => x,
                     };
 
@@ -518,13 +523,20 @@ mod functions {
     }
 
     #[test]
+    fn function_return_last_line() {
+        assert_program!("fun double(n)";
+                        "    n * 2";
+                        "double(12)" => 24);
+    }
+
+    #[test]
     fn function_complex_args() {
         assert_program!("var x = 12";
                         "var always_add = 12";
                         "fun plus_2(x)";
-                        "    return x + 2";
+                        "    x + 2";
                         "fun sum(x, y, z)";
-                        "    return always_add + x + y + z";
+                        "    always_add + x + y + z";
                         "sum(1, x, plus_2(always_add))" => 39);
     }
 
@@ -533,7 +545,7 @@ mod functions {
         assert_program!("fun fib(n)";
                         "    if n < 3";
                         "        return 1";
-                        "    return fib(n-1) + fib(n-2)";
+                        "    fib(n-1) + fib(n-2)";
                         "fib(12)" => 144);
     }
 }
