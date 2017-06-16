@@ -21,6 +21,8 @@ pub enum Ast {
     If(Box<Ast>, Arc<Ast>, Option<Box<Ast>>, bool),
     /// While(if-expr, resultant-block)
     While(Box<Ast>, Arc<Ast>),
+    /// ForIn(index-id, item-id, list, block)
+    ForIn(Option<Token>, Token, Box<Ast>, Arc<Ast>),
     /// LoopNav(break|continue)
     LoopNav(Token),
     /// Fun(function-id, args, block) defines a function
@@ -29,6 +31,16 @@ pub enum Ast {
     Return(Box<Ast>),
     /// Call(function-id, args)
     Call(Token, Vec<Ast>),
+    /// Literal sequence of expressions
+    Seq(Vec<Ast>),
+    /// AssignSeq(seq-id, Seq)
+    AssignSeq(Token, Box<Ast>),
+    /// ReferSeq(seq-id) refer to a sequence
+    ReferSeq(Token),
+    /// ReferSeqIndex(seq-id, index)
+    ReferSeqIndex(Token, Box<Ast>),
+    /// ReassignSeqIndex(seq-id, index, val)
+    ReassignSeqIndex(Token, Box<Ast>, Box<Ast>),
     /// Line(scope, expr)
     Line(usize, Box<Ast>),
     /// LinePair(line, next_line)
@@ -50,10 +62,21 @@ impl fmt::Debug for Ast {
                 write!(f, "{}If({:?},_,_)", if is_else { "Else" } else { "" }, bool_expr)
             },
             Ast::While(ref bool_expr, _) => write!(f, "While({:?},_)", bool_expr),
+            Ast::ForIn(None, ref id, ref list, ..) => write!(f, "ForIn({:?}:{:?})", id, list),
+            Ast::ForIn(Some(ref idx_id), ref id, ref list, ..) => {
+                write!(f, "ForIn({:?}{:?}:{:?})", idx_id, id, list)
+            },
             Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
             Ast::Fun(ref t, ref args, _) => write!(f, "Fun({:?},{:?},_)", t, args),
             Ast::Return(ref val) => write!(f, "Return({:?})", val),
             Ast::Call(ref t, ref args) => write!(f, "Call({:?},{:?})", t, args),
+            Ast::ReferSeq(ref t) => write!(f, "ReferSeq({:?})", t),
+            Ast::Seq(ref exprs) => write!(f, "Seq({:?})", exprs),
+            Ast::AssignSeq(ref t, ref seq) => write!(f, "AssignSeq({:?},{:?})", t, seq),
+            Ast::ReferSeqIndex(ref t, ref i) => write!(f, "ReferSeqIndex({:?},{:?})", t, i),
+            Ast::ReassignSeqIndex(ref t, ref i, ref val) => {
+                write!(f, "ReassignSeqIndex({:?},{:?},{:?})", t, i, val)
+            },
             Ast::Line(ref scope, _) => write!(f, "Line({},_)", scope),
             Ast::LinePair(..) => write!(f, "LinePair(_,_)"),
             Ast::Empty => write!(f, "Empty"),
@@ -222,13 +245,16 @@ impl<'a> Parser<'a> {
                 Ast::Num(token)
             }
             else {
-                // refer to an id
                 let id = self.consume(Id("identifier".into()))?;
-                if self.current_token == OpnBrace {
-                    // function call
+                if self.current_token == OpnBrace { // function call
                     self.fun_call(None, id)?
                 }
-                else {
+                else if self.consume_maybe(OpnSqr)?.is_some() { // refer to seq index
+                    let index_expr = self.expr()?;
+                    self.consume(ClsSqr)?;
+                    Ast::ReferSeqIndex(id, index_expr.into())
+                }
+                else { // refer to an id
                     Ast::Refer(id)
                 }
             }
@@ -378,13 +404,24 @@ impl<'a> Parser<'a> {
     // loop
     //     line+
     fn line_loop(&mut self, scope: usize) -> Res<Ast> {
-        let expr = {
+        let (while_expr, for_stuff) = {
             if self.consume_maybe(While)?.is_some() {
-                self.expr()?
+                (self.expr()?, None)
+            }
+            else if self.consume_maybe(For)?.is_some() {
+                let mut idx_id = Some(self.consume(Id("identifier".into()))?);
+                let item_id = match self.consume_maybe(Comma)? {
+                    Some(_) => self.consume(Id("identifier".into()))?,
+                    _ => idx_id.take().unwrap()
+                };
+
+                self.consume(In)?;
+                let list = self.list()?;
+                (Ast::Empty, Some((idx_id, item_id, list)))
             }
             else {
                 self.consume(Loop)?;
-                Ast::num(1)
+                (Ast::num(1), None)
             }
         };
         self.consume(Eol)?;
@@ -401,7 +438,12 @@ impl<'a> Parser<'a> {
                 self.lexer.cursor_debug()
             )); // TODO line numbers dodgy from unused_lines processing
         }
-        Ok(Ast::While(expr.into(), block.unwrap().into()))
+        Ok(if let Some((idx_id, item_id, list)) = for_stuff {
+            Ast::ForIn(idx_id, item_id, list.into(), block.unwrap().into())
+        }
+        else {
+            Ast::While(while_expr.into(), block.unwrap().into())
+        })
     }
 
     // fun id()
@@ -434,6 +476,43 @@ impl<'a> Parser<'a> {
             )); // TODO line numbers dodgy from unused_lines processing
         }
         Ok(Ast::Fun(id, arg_ids, block.unwrap().into()))
+    }
+
+    fn list(&mut self) -> Res<Ast> {
+        if self.consume_maybe(OpnBrace)?.is_some() {
+            let list = self.list()?;
+            self.consume(ClsBrace)?;
+            return Ok(list);
+        }
+        let mut exprs = vec![match self.expr()? {
+            a @ Ast::Refer(_) => {
+                if self.consume_maybe(Square)?.is_some() { // seq reference
+                    return Ok(match a {
+                        Ast::Refer(id) => Ast::ReferSeq(id),
+                        _ => unreachable!()
+                    });
+                }
+                a
+            },
+            expr => expr
+        }];
+        while self.consume_maybe(Comma)?.is_some() {
+            exprs.push(self.expr()?);
+        }
+        Ok(Ast::Seq(exprs))
+    }
+
+    // seq id[] = expr,expr,
+    fn line_seq(&mut self) -> Res<Ast> {
+        self.consume(Seq)?;
+        let seq_id = self.consume(Id("identifier".into()))?;
+        self.consume(Square)?;
+        Ok(if self.consume_maybe(Ass)?.is_some() {
+            Ast::AssignSeq(seq_id, self.list()?.into())
+        }
+        else {
+            Ast::AssignSeq(seq_id, Ast::Seq(vec![]).into())
+        })
     }
 
     fn line_expr(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {
@@ -485,6 +564,24 @@ impl<'a> Parser<'a> {
                 // v *= expr  ->  v = v * expr
                 return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
             }
+            if peek == OpnSqr { // ReferSeqIndex|ReassignSeqIndex
+                // let id = self.consume(Id("identifier".into()))?;
+                // self.consume(OpnSqr)?;
+                // let index_expr = self.expr()?;
+                // self.consume(ClsSqr)?;
+                let mut out = self.num()?;
+                if self.consume_maybe(Ass)?.is_some() {
+                    let expr = self.expr()?;
+                    out = match out {
+                        Ast::ReferSeqIndex(id, idx) => Ast::ReassignSeqIndex(id, idx, expr.into()),
+                        _ => {
+                            return Err(format!("Parser: expecting seq index ref id[expr], got {:?}",
+                                               out));
+                       }
+                    }
+                }
+                return Ok(out);
+            }
         }
         // If expr
         //     line+
@@ -493,13 +590,17 @@ impl<'a> Parser<'a> {
         }
         // loop
         //     line+
-        if self.current_token == Loop || self.current_token == While {
+        if [While, Loop, For].contains(&self.current_token) {
             return self.line_loop(scope);
         }
         // fun id()
         //     line+
         if self.current_token == Fun {
             return self.line_fun(scope);
+        }
+        // seq id[] = expr,expr,
+        if self.current_token == Seq {
+            return self.line_seq();
         }
         // expr
         if self.current_token != Eof {

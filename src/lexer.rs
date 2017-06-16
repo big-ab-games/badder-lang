@@ -23,6 +23,9 @@ pub enum Token {
     Lt,
     LtEq,
     Mod,
+    OpnSqr,
+    ClsSqr,
+    Square,
 
     // End of things
     Eol,
@@ -48,6 +51,7 @@ pub enum Token {
     Return,
     Comma,
     Dot,
+    Seq,
 }
 
 use lexer::Token::*;
@@ -69,6 +73,9 @@ impl fmt::Debug for Token {
             LtEq => write!(f, "<="),
             Mod => write!(f, "%"),
             OpAss(ref op) => write!(f, "{:?}=", *op),
+            OpnSqr => write!(f, "["),
+            ClsSqr => write!(f, "]"),
+            Square => write!(f, "[]"),
             Eol => write!(f, "Eol"),
             Eof => write!(f, "Eof"),
             Var => write!(f, "var"),
@@ -89,6 +96,7 @@ impl fmt::Debug for Token {
             Return => write!(f, "return"),
             Comma => write!(f, ","),
             Dot => write!(f, "."),
+            Seq => write!(f, "seq"),
             Indent(i) => write!(f, "'    '*{}", i),
             Id(ref id) => write!(f, "{}", id),
         }
@@ -110,6 +118,8 @@ impl Token {
             '%' => Some(Mod),
             ',' => Some(Comma),
             '.' => Some(Dot),
+            '[' => Some(OpnSqr),
+            ']' => Some(ClsSqr),
             _ => None,
         }
     }
@@ -133,6 +143,7 @@ impl Token {
             "continue" => Continue,
             "fun" => Fun,
             "return" => Return,
+            "seq" => Seq,
             _ => Id(id),
         }
     }
@@ -273,6 +284,11 @@ impl<'a> Lexer<'a> {
                         return Ok(OpAss(token.into()));
                     }
                 }
+                if token == OpnSqr {
+                    if let Some(&']') = self.chars.peek() {
+                        return Ok(Square);
+                    }
+                }
                 return Ok(token);
             }
 
@@ -360,7 +376,7 @@ impl<'a> Lexer<'a> {
             if let OpAss(_) = peek {
                 self.next_char();
             }
-            if peek == GtEq || peek == LtEq {
+            if peek == GtEq || peek == LtEq || peek == Square {
                 self.next_char();
             }
             return Ok(peek);

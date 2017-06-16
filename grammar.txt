@@ -1,24 +1,37 @@
 program : line+ Eof
 line    : indent* expr Eol|Eof
-        | indent* var id Eol|Eof
-        | indent* var id Ass expr Eol|Eof
+
+        | indent* Var id Eol|Eof
+        | indent* Var id Ass expr Eol|Eof
         | indent* id Ass expr Eol|Eof
         | indent* id (Pls|Sub|Mul|Div)Ass expr Eol|Eof
+
         | indent* If expr Eol block(+1) (Else (if expr)? Eol block(+1))+
+
         | indent* Loop Eol block(+1, Break, Continue)
         | indent* While expr Eol block(+1, Break, Continue)
+        | indent* For id (Comma id)? In list Eol block(+1, Break, Continue)
+
         | indent* Fun id OpnBrace (id Comma?)* ClsBrace Eol block(+1, Return)
+
+        | indent* Seq id Square (Ass list)? Eol|Eof
+        | indent* id OpnSqr expr ClsSqr Ass expr Eol|Eof
+
         | indent* Eol|Eof
 +
 break   : indent* Break Eol
 continue: indent* Continue Eol
 return  : indent* Return expr? Eol
 
+list    : id Square
+        | expr (Comma expr)*
+        | OpnBrace list ClsBrace
+
 expr    : ored
 ored    : anded (Or anded)*
 anded   : inversed (And inversed)*
 inversed: not compared
-compared: added (is not? added)?
+compared: added (Is Not? added)?
         | added (>|<|>=|<= added)?
 added   : timesed (Pls|Sub timesed)*
 multied : signed (Mul|Mod|Div signed)*
@@ -26,6 +39,7 @@ signed  : -?dotcall
 dotcall : num (Dot id OpnBrace (expr Comma?)* ClsBrace)*
 num     : digit
         | id
+        | id OpnSqr expr ClsSqr ^Ass?
         | id OpnBrace (expr Comma?)* ClsBrace
         | OpnBrace expr ClsBrace
 id      : non-digit(alphanumeric,_)*
