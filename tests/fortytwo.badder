@@ -6,14 +6,29 @@ var seven = 500
 six = ((six + 4)) / 2
 six *= 3 + 5 - 20 / 4  # shorthand operator assignment with bidmas precedence
 
+# can be called `equals_7(6)`
+# or `6.equals_7()`
+fun equals_7(number)
+    number is 7
+
 # fib: 1,1,2,3,5,8,..
-fun fib(n)
+fun slow_fib(n)
     if n < 3
         return 1
-    fib(n-1) + fib(n-2)
+    slow_fib(n-1) + slow_fib(n-2)
 
-var six = fib(6) - fib(3)
+fun fast_fib(n)
+    var its = 1
+    var last
+    var curr = 1
+    while its < n
+        var next = curr + last
+        last = curr
+        curr = next
+        its += 1
+    curr
 
+var six = slow_fib(6) - fast_fib(3)
 
 while seven > 7
     # divide by 10 until smaller than 7
@@ -26,11 +41,12 @@ loop
         continue
     break
 
-if seven is not 7
-    var confused = 1 # seven should be 7 by now
+if not seven.equals_7()
+    # seven should be 7 by now
+    six = -1
+    seven = -1
 else
     var seven = 11 # assignment shadowing in this scope
     seven *= 2
-
 
 six * seven
