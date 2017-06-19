@@ -27,6 +27,8 @@ enum FrameData {
     Value(Int),
     /// Callable(args, block)
     Callable(Vec<Token>, Arc<Ast>),
+    ///Ref(frame_index, id)
+    Ref(usize, Token),
     /// Sequence of values
     Sequence(Vec<Int>),
     LoopMarker,
@@ -37,8 +39,9 @@ impl fmt::Debug for FrameData {
         match *self
         {
             Value(x) => write!(f, "Value({})", x),
-            Callable(ref args, ..) => write!(f, "Callable({} arg)", args.len()),
+            Callable(..) => write!(f, "Callable"),
             Sequence(ref vals) => write!(f, "Sequence({:?})", vals),
+            Ref(i, ref t) => write!(f, "Ref([{}]:{:?})", i, t),
             LoopMarker => write!(f, "LoopMarker"),
         }
     }
@@ -56,6 +59,7 @@ impl FrameData {
                             .fold(String::new(), |all,n| all + &n)
                 ),
             Sequence(..) => format!("{:?}[]", id),
+            Ref(..) => "reference".into(),
             _ => "_".into(),
         }
     }
@@ -265,7 +269,9 @@ impl Interpreter {
                     }
                 },
                 _ => {
+                    self.stack.push(HashMap::new());
                     eval!(block)?;
+                    self.stack.pop();
                     0
                 },
             }),
@@ -281,7 +287,7 @@ impl Interpreter {
                         Err(err) => {
                             match err {
                                 LoopBreak => break,
-                                LoopContinue => continue,
+                                LoopContinue => (),
                                 e => return Err(e),
                             }
                         },
@@ -314,7 +320,7 @@ impl Interpreter {
                         Err(err) => {
                             match err {
                                 LoopBreak => break,
-                                LoopContinue => continue,
+                                LoopContinue => (),
                                 e => return Err(e),
                             }
                         },
@@ -353,56 +359,71 @@ impl Interpreter {
                 Ok(0)
             },
             Ast::Call(ref id, ref args) => {
-                let mut idx = current_scope;
-                loop {
-                    if stack_key.can_access(idx) && self.stack[idx].contains_key(&id) {
-                        let (mut arg_ids, callable_block) = {
-                            match &self.stack[idx][&id] {
-                                &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
-                                _ => {
-                                    return interprerror(format!(
-                                        "Interpreter: Invalid reference to non callable `{:?}`",
-                                        id
-                                    ))
-                                },
-                            }
-                        };
-                        if args.len() == arg_ids.len() {
-                            // construct new function call stack frame
-                            let mut f_frame = HashMap::new();
-                            for i in 0..args.len() {
-                                f_frame.insert(mem::replace(&mut arg_ids[i], Eol), Value(eval!(&args[i])?));
-                            }
-                            self.stack.push(f_frame);
-
-                            let out = match self.eval(
-                                &callable_block,
-                                current_scope + 1,
-                                StackKey::from_fun_call(idx, current_scope))
-                            {
-                                Err(FunReturn(value)) => Ok(value),
-                                Ok(x) => Ok(x),
-                                x => x,
-                            };
-
-                            // clean stack
-                            self.stack.pop();
-                            return out;
+                if let Some(idx) = highest_frame_idx!(&id) {
+                    let (mut arg_ids, callable_block) = {
+                        match &self.stack[idx][&id] {
+                            &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
+                            _ => {
+                                return interprerror(format!(
+                                    "Interpreter: Invalid reference to non callable `{:?}`",
+                                    id
+                                ))
+                            },
                         }
-                    }
-                    if idx == 0 { break; }
-                    idx -= 1;
-                }
+                    };
 
-                interprerror(self.unknown_id_err(&id, stack_key))
+                    // construct new function call stack frame
+                    let mut f_frame = HashMap::new();
+                    for i in 0..args.len() {
+                        let data = match args[i] {
+                            ref a @ Ast::Seq(..) => {
+                                Sequence(self.eval_seq(a, current_scope, stack_key)?)
+                            },
+                            Ast::ReferSeq(ref id) => {
+                                if let Some(idx) = highest_frame_idx!(&id) {
+                                    Ref(idx, id.clone())
+                                }
+                                else {
+                                    return interprerror(self.unknown_id_err(&id, stack_key));
+                                }
+                            },
+                            ref ast => Value(eval!(ast)?),
+                        };
+                        f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
+                    }
+                    self.stack.push(f_frame);
+
+                    let out = match self.eval(
+                        &callable_block,
+                        current_scope + 1,
+                        StackKey::from_fun_call(idx, current_scope))
+                    {
+                        Err(FunReturn(value)) => Ok(value),
+                        Ok(x) => Ok(x),
+                        x => x,
+                    };
+
+                    // clean stack
+                    self.stack.pop();
+                    return out;
+                }
+                else {
+                    interprerror(self.unknown_id_err(&id, stack_key))
+                }
             },
             Ast::Return(ref expr) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr) => {
-                if let Some(idx) = highest_frame_idx!(&seq_id) {
+                if let Some(idx) = highest_frame_idx!(seq_id) {
+                    let (mut idx, mut seq_id) = (idx, seq_id.clone());
+                    while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
+                        idx = n_idx;
+                        seq_id = n_id.clone();
+                    }
+
                     let seq_len = match self.stack[idx][&seq_id] {
                         Sequence(ref v) => Ok(v.len() as i32),
                         ref data => interprerror(format!(
-                            "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
+                            "Interpreter: Invalid sequence index reference to non-sequence `{}`",
                             data.desc(&seq_id)
                         )),
                     }?;
@@ -426,6 +447,12 @@ impl Interpreter {
             },
             Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr) => {
                 if let Some(idx) = highest_frame_idx!(&seq_id) {
+                    let (mut idx, mut seq_id) = (idx, seq_id.clone());
+                    while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
+                        idx = n_idx;
+                        seq_id = n_id.clone();
+                    }
+
                     let seq_len = match self.stack[idx][&seq_id] {
                         Sequence(ref v) => Ok(v.len() as i32),
                         ref data => interprerror(format!(
@@ -489,7 +516,7 @@ impl Interpreter {
                 eval!(next)
             },
             Ast::Empty => Ok(0),
-            _ => interprerror(format!("Interpreter: Unexpected syntax {:?}", ast)),
+            _ => panic!("Interpreter: Unexpected syntax {:?}", ast),
         }
     }
 
@@ -506,10 +533,16 @@ impl Interpreter {
             }
             Ast::ReferSeq(ref id) => {
                 if let Some(idx) = self.highest_frame_idx(&id, current_scope, stack_key) {
+                    let (mut idx, mut id) = (idx, id.clone());
+                    while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
+                        idx = n_idx;
+                        id = n_id.clone();
+                    }
+
                     match self.stack[idx][&id] {
                         Sequence(ref v) => Ok(v.clone()),
                         ref data => interprerror(format!(
-                            "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
+                            "Interpreter: Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
                         )),
                     }
@@ -680,6 +713,49 @@ mod fitness {
 //                         "nums[2]" => 5000);
 //     }
 // }
+
+#[cfg(test)]
+mod list_functions {
+    use super::*;
+
+    #[test]
+    fn def_seq_function() {
+        assert_program!("fun count_number_of(list[], num)";
+                        "    var count";
+                        "    for n in list[]";
+                        "        if n is num";
+                        "            count += 1";
+                        "    count";
+                        "seq fib[] = 1,1,2,3,5";
+                        "count_number_of(fib[], 1)" => 2);
+    }
+
+    #[test]
+    fn pass_seq_by_reference() {
+        assert_program!("fun overwrite_with(list[], num)";
+                        "    for i, n in list[]";
+                        "        list[i] = num";
+                        "seq fib[] = 1,1,2,3,5";
+                        "overwrite_with(fib[], 4)";
+                        "fib[3]" => 4);
+    }
+
+    #[test]
+    fn dot_call_syntax() {
+        assert_program!("fun first(list[])";
+                        "    list[0]";
+                        "seq fib[] = 1,1,2,3,5";
+                        "fib[].first()" => 1);
+
+        assert_program!("fun last_plus(list[], num)";
+                        "    var last";
+                        "    for n in list[]";
+                        "        last = n";
+                        "    last + num";
+                        "seq fib[] = 1,1,2,3,5";
+                        "fib[].last_plus(3)" => 8);
+    }
+}
 
 #[cfg(test)]
 mod lists {

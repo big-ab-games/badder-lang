@@ -240,14 +240,21 @@ impl<'a> Parser<'a> {
             _ => panic!("fun_call passed in non-Id id"),
         }
         while self.current_token != ClsBrace {
-            args.push(self.expr()?);
+            match self.listref()? {
+                Some(list) => args.push(list),
+                _ => args.push(self.expr()?),
+            }
+
             if self.consume_maybe(Comma)?.is_none() {
                 break;
             }
         }
         self.consume(ClsBrace)?;
-        for _ in args.iter() {
-            signature += "n"
+        for arg in args.iter() {
+            match *arg {
+                Ast::Seq(..) | Ast::ReferSeq(..) => signature += "l",
+                _ => signature += "n",
+            }
         }
         signature += ")";
         Ok(Ast::Call(Id(signature.into()), args))
@@ -255,24 +262,29 @@ impl<'a> Parser<'a> {
 
     fn num(&mut self) -> Res<Ast> {
         Ok({
-            if self.current_token == OpnBrace {
+            if self.current_token == OpnBrace { // TODO handle list literals
                 self.braced()?
             }
             else if let Some(token) = self.consume_maybe(Num(0))? {
                 Ast::Num(token)
             }
             else {
-                let id = self.consume(Id("identifier".into()))?;
-                if self.current_token == OpnBrace { // function call
-                    self.fun_call(None, id)?
-                }
-                else if self.consume_maybe(OpnSqr)?.is_some() { // refer to seq index
-                    let index_expr = self.expr()?;
-                    self.consume(ClsSqr)?;
-                    Ast::ReferSeqIndex(id_to_seq_id(&id), index_expr.into())
-                }
-                else { // refer to an id
-                    Ast::Refer(id)
+                match self.listref()? {
+                    Some(list) => list,
+                    _ => {
+                        let id = self.consume(Id("identifier".into()))?;
+                        if self.current_token == OpnBrace { // function call
+                            self.fun_call(None, id)?
+                        }
+                        else if self.consume_maybe(OpnSqr)?.is_some() { // refer to seq index
+                            let index_expr = self.expr()?;
+                            self.consume(ClsSqr)?;
+                            Ast::ReferSeqIndex(id_to_seq_id(&id), index_expr.into())
+                        }
+                        else { // refer to an id
+                            Ast::Refer(id)
+                        }
+                    }
                 }
             }
         })
@@ -476,9 +488,15 @@ impl<'a> Parser<'a> {
             _ => unreachable!()
         };
         let mut arg_ids = vec![];
-        while let Some(arg) = self.consume_maybe(Id(id_name.clone()))? {
+        while let Some(mut arg) = self.consume_maybe(Id(id_name.clone()))? {
+            if self.consume_maybe(Square)?.is_some() {
+                arg = id_to_seq_id(&arg);
+                signature += "l"
+            }
+            else {
+                signature += "n";
+            }
             arg_ids.push(arg);
-            signature += "n";
             if self.consume_maybe(Comma)?.is_none() {
                 break;
             }
@@ -502,24 +520,28 @@ impl<'a> Parser<'a> {
         Ok(Ast::AssignFun(Id(signature.into()), arg_ids, block.unwrap().into()))
     }
 
-    fn list(&mut self) -> Res<Ast> {
+    /// return optional list match
+    fn listref(&mut self) -> Res<Option<Ast>> {
         if self.consume_maybe(OpnBrace)?.is_some() {
             let list = self.list()?;
             self.consume(ClsBrace)?;
+            return Ok(Some(list));
+        }
+        if let Id(..) = self.current_token {
+            if self.lexer.peek()? == Square {
+                let id = self.consume(Id("identifier".into()))?;
+                self.consume(Square)?;
+                return Ok(Some(Ast::ReferSeq(id_to_seq_id(&id))));
+            }
+        }
+        Ok(None)
+    }
+
+    fn list(&mut self) -> Res<Ast> {
+        if let Some(list) = self.listref()? {
             return Ok(list);
         }
-        let mut exprs = vec![match self.expr()? {
-            a @ Ast::Refer(_) => {
-                if self.consume_maybe(Square)?.is_some() { // seq reference
-                    return Ok(match a {
-                        Ast::Refer(ref id) => Ast::ReferSeq(id_to_seq_id(id)),
-                        _ => unreachable!()
-                    });
-                }
-                a
-            },
-            expr => expr
-        }];
+        let mut exprs = vec![self.expr()?];
         while self.consume_maybe(Comma)?.is_some() {
             exprs.push(self.expr()?);
         }

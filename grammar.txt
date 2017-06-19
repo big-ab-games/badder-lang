@@ -23,8 +23,10 @@ break   : indent* Break Eol
 continue: indent* Continue Eol
 return  : indent* Return expr? Eol
 
-list    : id Square
+list    : listref
         | expr (Comma expr)*
+
+listref : id Square
         | OpnBrace list ClsBrace
 
 expr    : ored
@@ -40,8 +42,9 @@ dotcall : num (Dot id OpnBrace (expr Comma?)* ClsBrace)*
 num     : digit
         | id
         | id OpnSqr expr ClsSqr ^Ass?
-        | id OpnBrace (expr Comma?)* ClsBrace
+        | id OpnBrace (expr|lazylist Comma?)* ClsBrace
         | OpnBrace expr ClsBrace
+        | lazylist Dot OpnBrace (expr|lazylist Comma?)* ClsBrace
 id      : non-digit(alphanumeric,_)*
 
 indent  : '    '
