@@ -144,7 +144,7 @@ impl Interpreter {
     }
 
     fn highest_frame_idx(&self,
-                         key: &lexer::Token,
+                         key: &Token,
                          current_scope: usize,
                          stack_key: StackKey)
                          -> Option<usize> {
@@ -228,13 +228,6 @@ impl Interpreter {
             }),
             Ast::Assign(ref id, ref expr) => {
                 let v = eval!(expr)?;
-                match self.stack[current_scope].get(&id) {
-                    None | Some(&Value(..)) => (), // overwrite
-                    Some(other) => return interprerror(format!(
-                        "Interpreter: Assignment of `{:?}` conflicts with `{}` in same scope",
-                        id,
-                        other.desc(id))),
-                };
                 self.stack[current_scope].insert(id.clone(), Value(v));
                 Ok(v)
             },
@@ -347,7 +340,7 @@ impl Interpreter {
                     interprerror(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
                 }
             },
-            Ast::Fun(ref id, ref args, ref block) => {
+            Ast::AssignFun(ref id, ref args, ref block) => {
                 let top = self.stack.len() - 1;
                 match self.stack[current_scope].get(&id) {
                     None | Some(&Callable(..)) => (), // overwrite
@@ -360,50 +353,48 @@ impl Interpreter {
                 Ok(0)
             },
             Ast::Call(ref id, ref args) => {
-                if let Some(def_frame) = highest_frame_idx!(&id) {
-                    let (mut arg_ids, callable_block) = {
-                        match &self.stack[def_frame][&id] {
-                            &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
-                            _ => {
-                                return interprerror(format!(
-                                    "Interpreter: Invalid reference to non callable `{:?}`",
-                                    id
-                                ))
-                            },
+                let mut idx = current_scope;
+                loop {
+                    if stack_key.can_access(idx) && self.stack[idx].contains_key(&id) {
+                        let (mut arg_ids, callable_block) = {
+                            match &self.stack[idx][&id] {
+                                &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
+                                _ => {
+                                    return interprerror(format!(
+                                        "Interpreter: Invalid reference to non callable `{:?}`",
+                                        id
+                                    ))
+                                },
+                            }
+                        };
+                        if args.len() == arg_ids.len() {
+                            // construct new function call stack frame
+                            let mut f_frame = HashMap::new();
+                            for i in 0..args.len() {
+                                f_frame.insert(mem::replace(&mut arg_ids[i], Eol), Value(eval!(&args[i])?));
+                            }
+                            self.stack.push(f_frame);
+
+                            let out = match self.eval(
+                                &callable_block,
+                                current_scope + 1,
+                                StackKey::from_fun_call(idx, current_scope))
+                            {
+                                Err(FunReturn(value)) => Ok(value),
+                                Ok(x) => Ok(x),
+                                x => x,
+                            };
+
+                            // clean stack
+                            self.stack.pop();
+                            return out;
                         }
-                    };
-                    if args.len() != arg_ids.len() {
-                        return interprerror(format!(
-                            "Interpreter: `{}` called with {} argument{}, expects {}",
-                            self.stack[def_frame][&id].desc(&id),
-                            args.len(),
-                            if arg_ids.len() > 1 { "s" } else { "" },
-                            arg_ids.len(),
-                        ));
                     }
-
-                    // construct new function call stack frame
-                    let mut f_frame = HashMap::new();
-                    for i in 0..args.len() {
-                        f_frame.insert(mem::replace(&mut arg_ids[i], Eol), Value(eval!(&args[i])?));
-                    }
-                    self.stack.push(f_frame);
-
-                    let out = match self.eval(&callable_block,
-                                              current_scope + 1,
-                                              StackKey::from_fun_call(def_frame, current_scope)) {
-                        Err(FunReturn(value)) => Ok(value),
-                        Ok(x) => Ok(x),
-                        x => x,
-                    };
-
-                    // clean stack
-                    self.stack.pop();
-                    out
+                    if idx == 0 { break; }
+                    idx -= 1;
                 }
-                else {
-                    interprerror(self.unknown_id_err(&id, stack_key))
-                }
+
+                interprerror(self.unknown_id_err(&id, stack_key))
             },
             Ast::Return(ref expr) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr) => {
@@ -768,6 +759,28 @@ mod lists {
                         "    curr";
                         "fib(12)" => 144);
     }
+
+    #[test]
+    fn distinct_signature_from_var() {
+        assert_program!("var f = 12";
+                        "seq f[] = 13";
+                        "f[0]" => 13);
+        assert_program!("var f = 12";
+                        "seq f[] = 13";
+                        "f" => 12);
+    }
+
+    #[test]
+    fn distinct_signature_from_fun() {
+        assert_program!("fun f()";
+                        "    12";
+                        "seq f[] = 13";
+                        "f[0]" => 13);
+        assert_program!("fun f()";
+                        "    12";
+                        "seq f[] = 13";
+                        "f()" => 12);
+    }
 }
 
 #[cfg(test)]
@@ -878,15 +891,38 @@ mod functions {
     }
 
     #[test]
-    fn overwrite_non_fun_err() {
+    fn distinct_signature_from_var() {
         assert_program!("var f = 12";
                         "fun f()";
                         "    2";
-                        "f()" =>X "conflicts with `var f` in same scope");
-        assert_program!("fun f()";
+                        "f()" => 2);
+        assert_program!("var f = 12";
+                        "fun f()";
                         "    2";
-                        "var f = 12";
-                        "f" =>X "conflicts with `f()` in same scope");
+                        "f" => 12);
+    }
+
+    #[test]
+    fn call_by_signature_same_scope() {
+        assert_program!("fun max(a, b)";
+                        "    if b > a";
+                        "        return b";
+                        "    a";
+                        "fun max(a, b, c)";
+                        "    max(a, max(b, c))";
+                        "max(1, 3, 2)" => 3);
+    }
+
+    #[test]
+    fn call_by_signature_across_scope() {
+        assert_program!("fun number(a)";
+                        "    a";
+                        "var out";
+                        "if 1";
+                        "    fun number(b, c)";
+                        "        b + c";
+                        "    out = number(2)";
+                        "out" => 2);
     }
 }
 

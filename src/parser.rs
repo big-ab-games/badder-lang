@@ -25,8 +25,8 @@ pub enum Ast {
     ForIn(Option<Token>, Token, Box<Ast>, Arc<Ast>),
     /// LoopNav(break|continue)
     LoopNav(Token),
-    /// Fun(function-id, args, block) defines a function
-    Fun(Token, Vec<Token>, Arc<Ast>),
+    /// AssignFun(function-id, args, block) defines a function
+    AssignFun(Token, Vec<Token>, Arc<Ast>),
     // Return(expr) used inside function blocks
     Return(Box<Ast>),
     /// Call(function-id, args)
@@ -67,7 +67,7 @@ impl fmt::Debug for Ast {
                 write!(f, "ForIn({:?}{:?}:{:?})", idx_id, id, list)
             },
             Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
-            Ast::Fun(ref t, ref args, _) => write!(f, "Fun({:?},{:?},_)", t, args),
+            Ast::AssignFun(ref t, ref args, _) => write!(f, "AssignFun({:?},{:?},_)", t, args),
             Ast::Return(ref val) => write!(f, "Return({:?})", val),
             Ast::Call(ref t, ref args) => write!(f, "Call({:?},{:?})", t, args),
             Ast::ReferSeq(ref t) => write!(f, "ReferSeq({:?})", t),
@@ -138,7 +138,7 @@ impl Ast {
                         elif.debug_string())
             },
             &Ast::While(ref expr, ref block) => format!("While({})\n{}", expr.debug_string(), block.debug_string()),
-            &Ast::Fun(ref id, ref args, ref block) => format!("DefFun({:?}, {:?})\n{}", id, args, block.debug_string()),
+            &Ast::AssignFun(ref id, ref args, ref block) => format!("AssignFun({:?}, {:?})\n{}", id, args, block.debug_string()),
             x => format!("{:?}", x),
         }
     }
@@ -150,6 +150,14 @@ impl Ast {
             }
         }
         false
+    }
+}
+
+#[inline]
+fn id_to_seq_id(id: &Token) -> Token {
+    match *id {
+        Id(ref id) => Id((id.to_string() + "[]").into()),
+        _ => panic!("id_to_seq_id() called on non-Id token"),
     }
 }
 
@@ -224,8 +232,13 @@ impl<'a> Parser<'a> {
 
     fn fun_call(&mut self, left: Option<Ast>, id: Token) -> Res<Ast> {
         // function call
-        let mut args = left.map(|a| vec![a]).unwrap_or_else(|| vec![]);
         self.consume(OpnBrace)?;
+        let mut args = left.map(|a| vec![a]).unwrap_or_else(|| vec![]);
+        let mut signature = String::new();
+        match id {
+            Id(name) => signature = signature + &name + "(",
+            _ => panic!("fun_call passed in non-Id id"),
+        }
         while self.current_token != ClsBrace {
             args.push(self.expr()?);
             if self.consume_maybe(Comma)?.is_none() {
@@ -233,7 +246,11 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(ClsBrace)?;
-        Ok(Ast::Call(id, args))
+        for _ in args.iter() {
+            signature += "n"
+        }
+        signature += ")";
+        Ok(Ast::Call(Id(signature.into()), args))
     }
 
     fn num(&mut self) -> Res<Ast> {
@@ -252,7 +269,7 @@ impl<'a> Parser<'a> {
                 else if self.consume_maybe(OpnSqr)?.is_some() { // refer to seq index
                     let index_expr = self.expr()?;
                     self.consume(ClsSqr)?;
-                    Ast::ReferSeqIndex(id, index_expr.into())
+                    Ast::ReferSeqIndex(id_to_seq_id(&id), index_expr.into())
                 }
                 else { // refer to an id
                     Ast::Refer(id)
@@ -453,15 +470,22 @@ impl<'a> Parser<'a> {
         let id_name: Atom = "identifier".into();
         let id = self.consume(Id(id_name.clone()))?;
         self.consume(OpnBrace)?;
+        let mut signature = String::new();
+        match id {
+            Id(fun_name) => signature = signature + &fun_name + "(",
+            _ => unreachable!()
+        };
         let mut arg_ids = vec![];
         while let Some(arg) = self.consume_maybe(Id(id_name.clone()))? {
             arg_ids.push(arg);
+            signature += "n";
             if self.consume_maybe(Comma)?.is_none() {
                 break;
             }
         }
         self.consume(ClsBrace)?;
         self.consume(Eol)?;
+        signature += ")";
         let block = self.lines_while_allowing(
             |l| match l {
                 &Ast::Line(line_scope, _) => line_scope > scope,
@@ -475,7 +499,7 @@ impl<'a> Parser<'a> {
                 self.lexer.cursor_debug()
             )); // TODO line numbers dodgy from unused_lines processing
         }
-        Ok(Ast::Fun(id, arg_ids, block.unwrap().into()))
+        Ok(Ast::AssignFun(Id(signature.into()), arg_ids, block.unwrap().into()))
     }
 
     fn list(&mut self) -> Res<Ast> {
@@ -488,7 +512,7 @@ impl<'a> Parser<'a> {
             a @ Ast::Refer(_) => {
                 if self.consume_maybe(Square)?.is_some() { // seq reference
                     return Ok(match a {
-                        Ast::Refer(id) => Ast::ReferSeq(id),
+                        Ast::Refer(ref id) => Ast::ReferSeq(id_to_seq_id(id)),
                         _ => unreachable!()
                     });
                 }
@@ -505,7 +529,7 @@ impl<'a> Parser<'a> {
     // seq id[] = expr,expr,
     fn line_seq(&mut self) -> Res<Ast> {
         self.consume(Seq)?;
-        let seq_id = self.consume(Id("identifier".into()))?;
+        let seq_id = id_to_seq_id(&self.consume(Id("identifier".into()))?);
         self.consume(Square)?;
         Ok(if self.consume_maybe(Ass)?.is_some() {
             Ast::AssignSeq(seq_id, self.list()?.into())
@@ -565,10 +589,6 @@ impl<'a> Parser<'a> {
                 return Ok(Ast::Reassign(id.clone(), Ast::bin_op(*op, Ast::Refer(id), expr).into()));
             }
             if peek == OpnSqr { // ReferSeqIndex|ReassignSeqIndex
-                // let id = self.consume(Id("identifier".into()))?;
-                // self.consume(OpnSqr)?;
-                // let index_expr = self.expr()?;
-                // self.consume(ClsSqr)?;
                 let mut out = self.num()?;
                 if self.consume_maybe(Ass)?.is_some() {
                     let expr = self.expr()?;
