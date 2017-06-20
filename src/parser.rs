@@ -122,7 +122,7 @@ impl Ast {
             ref pair @ Ast::LinePair(..) => {
                 let mut next = pair;
                 let mut out = String::new();
-                while let &Ast::LinePair(ref l1, ref l2) = next {
+                while let Ast::LinePair(ref l1, ref l2) = *next {
                     out = out + &l1.debug_string() + "\n";
                     next = l2;
                 }
@@ -158,7 +158,7 @@ impl Ast {
     }
 
     fn is_else_line(&self) -> bool {
-        if let &Ast::Line(_, ref ast) = self {
+        if let Ast::Line(_, ref ast) = *self {
             if let Ast::If(_, _, _, is_else) = **ast {
                 return is_else;
             }
@@ -264,7 +264,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(ClsBrace)?;
-        for arg in args.iter() {
+        for arg in &args {
             match *arg {
                 Ast::Seq(..) | Ast::ReferSeq(..) => signature += "l",
                 _ => signature += "n",
@@ -422,8 +422,8 @@ impl<'a> Parser<'a> {
             allow = new_allow.into();
         }
         let block = self.lines_while_allowing(
-            |l| match l {
-                &Ast::Line(line_scope, _) => line_scope > scope,
+            |l| match *l {
+                Ast::Line(line_scope, _) => line_scope > scope,
                 _ => false,
             },
             allow,
@@ -469,8 +469,8 @@ impl<'a> Parser<'a> {
         };
         self.consume(Eol)?;
         let block = self.lines_while_allowing(
-            |l| match l {
-                &Ast::Line(line_scope, _) => line_scope > scope,
+            |l| match *l {
+                Ast::Line(line_scope, _) => line_scope > scope,
                 _ => false,
             },
             vec![Break, Continue].into(),
@@ -519,8 +519,8 @@ impl<'a> Parser<'a> {
         self.consume(Eol)?;
         signature += ")";
         let block = self.lines_while_allowing(
-            |l| match l {
-                &Ast::Line(line_scope, _) => line_scope > scope,
+            |l| match *l {
+                Ast::Line(line_scope, _) => line_scope > scope,
                 _ => false,
             },
             vec![Return].into(),

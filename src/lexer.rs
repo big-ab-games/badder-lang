@@ -300,88 +300,90 @@ impl<'a> Lexer<'a> {
 
     pub fn next_token(&mut self) -> Res<Token> {
         let peek = self.peek()?;
-        while peek != Eof {
-            if peek == Eol {
-                self.next_char();
-                return Ok(peek);
-            }
 
-            if let Indent(_) = peek {
-                let mut spaces = 1;
-                while let Some(' ') = self.next_char() {
-                    spaces += 1;
-                }
-                if spaces % 4 != 0 {
-                    // could be an indent error, or could be a junkspace line
-                    while let Some(c) = self.current_char {
-                        if c == '\n' {
-                            return self.next_token();
-                        }
-                        if c == '#' {
-                            while let Some(c) = self.next_char() {
-                                if c == '\n' {
-                                    return self.next_token();
-                                }
-                            }
-                        }
-                        if !junkspace(c) {
-                            break;
-                        }
-                        self.next_char();
-                    }
-
-                    return Err(format!(
-                        "Lexer: {} Invalid indent must be multiple of 4 spaces",
-                        self.cursor_debug()
-                    ));
-                }
-                return Ok(Indent(spaces / 4));
-            }
-
-            let c = self.current_char.unwrap();
-
-            if let Num(_) = peek {
-                let mut number_str = c.to_string();
-                while let Some(c) = self.next_char() {
-                    if c.is_digit(10) {
-                        number_str.push(c);
-                    }
-                    else {
-                        break;
-                    }
-                }
-                return match number_str.parse() {
-                    Ok(n) => Ok(Num(n)),
-                    Err(e) => Err(format!("Lexer: {} could not parse number: {}",
-                                          self.cursor_debug(),
-                                          e)),
-                };
-            }
-
-            // non-digit as here
-            if let Id(_) = peek {
-                let mut id = c.to_string();
-                while let Some(c) = self.next_char() {
-                    if id_char(c) {
-                        id.push(c);
-                    }
-                    else {
-                        break;
-                    }
-                }
-                return Ok(Token::parse_id(id));
-            }
-
-            self.next_char();
-            if let OpAss(_) = peek {
-                self.next_char();
-            }
-            if peek == GtEq || peek == LtEq || peek == Square {
-                self.next_char();
-            }
+        if peek == Eof {
             return Ok(peek);
         }
 
-        Ok(Token::Eof)
+        if peek == Eol {
+            self.next_char();
+            return Ok(peek);
+        }
+
+        if let Indent(_) = peek {
+            let mut spaces = 1;
+            while let Some(' ') = self.next_char() {
+                spaces += 1;
+            }
+            if spaces % 4 != 0 {
+                // could be an indent error, or could be a junkspace line
+                while let Some(c) = self.current_char {
+                    if c == '\n' {
+                        return self.next_token();
+                    }
+                    if c == '#' {
+                        while let Some(c) = self.next_char() {
+                            if c == '\n' {
+                                return self.next_token();
+                            }
+                        }
+                    }
+                    if !junkspace(c) {
+                        break;
+                    }
+                    self.next_char();
+                }
+
+                return Err(format!(
+                    "Lexer: {} Invalid indent must be multiple of 4 spaces",
+                    self.cursor_debug()
+                ));
+            }
+            return Ok(Indent(spaces / 4));
+        }
+
+        let c = self.current_char.unwrap();
+
+        if let Num(_) = peek {
+            let mut number_str = c.to_string();
+            while let Some(c) = self.next_char() {
+                if c.is_digit(10) {
+                    number_str.push(c);
+                }
+                else {
+                    break;
+                }
+            }
+            return match number_str.parse() {
+                Ok(n) => Ok(Num(n)),
+                Err(e) => Err(format!("Lexer: {} could not parse number: {}",
+                                      self.cursor_debug(),
+                                      e)),
+            };
+        }
+
+        // non-digit as here
+        if let Id(_) = peek {
+            let mut id = c.to_string();
+            while let Some(c) = self.next_char() {
+                if id_char(c) {
+                    id.push(c);
+                }
+                else {
+                    break;
+                }
+            }
+            return Ok(Token::parse_id(id));
+        }
+
+        self.next_char();
+        if let OpAss(_) = peek {
+            self.next_char();
+        }
+        if peek == GtEq || peek == LtEq || peek == Square {
+            self.next_char();
+        }
+
+        Ok(peek)
     }
 }

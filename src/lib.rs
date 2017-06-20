@@ -25,7 +25,7 @@ const MAX_STACK: usize = 50;
 
 #[derive(Debug, Clone, Copy)]
 enum Builtin {
-    SeqSize,
+    Size,
     SeqAdd,
     SeqRemove,
 }
@@ -75,7 +75,7 @@ impl FrameData {
     }
 
     fn add_builtins_to(frame: &mut HashMap<Token, FrameData>) {
-        frame.insert(Id("size(l)".into()), BuiltinCallable(Builtin::SeqSize));
+        frame.insert(Id("size(l)".into()), BuiltinCallable(Builtin::Size));
         frame.insert(Id("add(ln)".into()), BuiltinCallable(Builtin::SeqAdd));
         frame.insert(Id("remove(ln)".into()), BuiltinCallable(Builtin::SeqRemove));
     }
@@ -97,12 +97,14 @@ struct StackKey {
 
 impl fmt::Debug for StackKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.access_from == self.access_up_to || self.access_from == self.access_up_to + 1 {
-            true => write!(f, "all-frames"),
-            _ if self.access_up_to + 2 == self.access_from => {
-                write!(f, "not-frame({})", self.access_up_to + 1)
-            }
-            _ => write!(f, "not-frame({}-{})", self.access_up_to + 1, self.access_from - 1),
+        if self.access_from == self.access_up_to || self.access_from == self.access_up_to + 1 {
+            write!(f, "all-frames")
+        }
+        else if self.access_up_to + 2 == self.access_from {
+            write!(f, "not-frame({})", self.access_up_to + 1)
+        }
+        else {
+            write!(f, "not-frame({}-{})", self.access_up_to + 1, self.access_from - 1)
         }
     }
 }
@@ -130,10 +132,7 @@ pub struct Interpreter {
 
 #[inline]
 fn bool_to_num(b: bool) -> Int {
-    match b {
-        true => 1,
-        false => 0,
-    }
+    if b { 1 } else { 0 }
 }
 
 fn interprerror<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
@@ -144,6 +143,10 @@ fn convert_signed_index(mut i: i32, length: usize) -> usize {
     let len = length as i32;
     if i < 0 { i = (len + i % len) % len; }
     i as usize
+}
+
+impl Default for Interpreter {
+    fn default() -> Interpreter { Interpreter::new() }
 }
 
 impl Interpreter {
@@ -189,8 +192,8 @@ impl Interpreter {
 
     #[inline]
     fn log_eval(&mut self, ast: &Ast, current_scope: usize, stack_key: StackKey) {
-        match ast {
-            &Ast::Line(..) | &Ast::LinePair(..) | &Ast::Num(_) => (),
+        match *ast {
+            Ast::Line(..) | Ast::LinePair(..) | Ast::Num(..) => (),
             _ => trace!("base: {}, access: {:?}\nstack: {:?}\neval({:?})",
                         current_scope,
                         stack_key,
@@ -199,55 +202,276 @@ impl Interpreter {
         }
     }
 
+    #[inline]
+    fn eval_bin_op(&mut self,
+                   token: &Token,
+                   left: &Ast,
+                   right: &Ast,
+                   current_scope: usize,
+                   stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
+
+        match *token {
+            Pls => Ok(eval!(left)? + eval!(right)?),
+            Sub => Ok(eval!(left)? - eval!(right)?),
+            Mul => Ok(eval!(left)? * eval!(right)?),
+            Mod => Ok(eval!(left)? % eval!(right)?),
+            Div => {
+                match eval!(right)? {
+                    0 => interprerror("Interpreter: Cannot divide by zero"),
+                    divisor => Ok(eval!(left)? / divisor),
+                }
+            },
+            And => {
+                match eval!(left)? {
+                    0 => Ok(0),
+                    _ => eval!(right),
+                }
+            },
+            Or => {
+                match eval!(left)? {
+                    0 => eval!(right),
+                    x => Ok(x),
+                }
+            },
+            Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
+            Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
+            Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
+            GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
+            LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
+            _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
+        }
+    }
+
+    #[inline]
+    fn eval_while(&mut self,
+                  expr: &Ast,
+                  block: &Ast,
+                  current_scope: usize,
+                  stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+
+        if eval!(expr)? == 0 {
+            return Ok(0);
+        }
+        let loop_token = Id("#loop".into());
+        self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
+        loop {
+            self.stack.push(HashMap::new());
+            match eval!(block) {
+                Err(LoopBreak) => break,
+                Ok(_) | Err(LoopContinue) => (),
+                err @ Err(_) => return err,
+            };
+            self.stack.pop();
+            if eval!(expr)? == 0 {
+                break;
+            }
+        }
+        self.stack[current_scope].remove(&loop_token);
+        Ok(0)
+    }
+
+    #[inline]
+    fn eval_for_in(&mut self,
+                   idx_id: &Option<Token>,
+                   item_id: &Token,
+                   list_expr: &Ast,
+                   block: &Ast,
+                   current_scope: usize,
+                   stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
+
+        let mut list = eval_seq!(list_expr)?;
+        if list.is_empty() {
+            return Ok(0);
+        }
+        let loop_token = Id("#loop".into());
+        self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
+        let mut index = 0;
+        while index < list.len() {
+            let mut frame = HashMap::new();
+            if let Some(ref id) = *idx_id {
+                frame.insert(id.clone(), Value(index as i32));
+            }
+            frame.insert(item_id.clone(), Value(list[index]));
+            self.stack.push(frame);
+            match eval!(block) {
+                Err(LoopBreak) => break,
+                Ok(_) | Err(LoopContinue) => (),
+                err @ Err(_) => return err,
+            };
+            self.stack.pop();
+            index += 1;
+            list = eval_seq!(list_expr)?;
+        }
+        self.stack[current_scope].remove(&loop_token);
+        Ok(0)
+    }
+
+    #[inline]
+    fn eval_fun_call(&mut self,
+                     id: &Token,
+                     args: &[Ast],
+                     current_scope: usize,
+                     stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
+        macro_rules! highest_frame_idx {
+            ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) }
+        }
+
+        if let Some(idx) = highest_frame_idx!(id) {
+            let mut builtin_callable = None;
+            if let BuiltinCallable(builtin) = self.stack[idx][id] {
+                builtin_callable = Some(builtin);
+            }
+            if let Some(builtin) = builtin_callable {
+                return self.call_builtin(builtin, args, current_scope, stack_key);
+            }
+
+            let (mut arg_ids, callable_block) = {
+                match self.stack[idx][id] {
+                    Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
+                    _ => {
+                        return interprerror(format!(
+                            "Interpreter: Invalid reference to non callable `{:?}`",
+                            id
+                        ))
+                    },
+                }
+            };
+
+            // construct new function call stack frame
+            let mut f_frame = HashMap::new();
+            for i in 0..args.len() {
+                let data = match args[i] {
+                    ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?),
+                    Ast::ReferSeq(ref id) => {
+                        if let Some(idx) = highest_frame_idx!(id) {
+                            Ref(idx, id.clone())
+                        }
+                        else {
+                            return interprerror(self.unknown_id_err(id, stack_key));
+                        }
+                    },
+                    ref ast => Value(eval!(ast)?),
+                };
+                f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
+            }
+            self.stack.push(f_frame);
+
+            let out = match self.eval(&callable_block,
+                                      current_scope + 1,
+                                      StackKey::from_fun_call(idx, current_scope)) {
+                Err(FunReturn(value)) => Ok(value),
+                Ok(x) => Ok(x),
+                x => x,
+            };
+
+            // clean stack
+            self.stack.pop();
+            return out;
+        }
+        else { interprerror(self.unknown_id_err(id, stack_key)) }
+    }
+
+    #[inline]
+    fn eval_refer_seq_index(&mut self,
+                            seq_id: &Token,
+                            index_expr: &Ast,
+                            current_scope: usize,
+                            stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+
+        if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
+            let (mut idx, mut seq_id) = (idx, seq_id.clone());
+            while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
+                idx = n_idx;
+                seq_id = n_id.clone();
+            }
+
+            let seq_len = match self.stack[idx][&seq_id] {
+                Sequence(ref v) => Ok(v.len()),
+                ref data => interprerror(format!(
+                    "Interpreter: Invalid sequence index reference to non-sequence `{}`",
+                    data.desc(&seq_id)
+                )),
+            }?;
+            let index = convert_signed_index(eval!(index_expr)?, seq_len);
+            if seq_len as usize <= index  {
+                return interprerror(format!(
+                    "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
+                    index,
+                    seq_len));
+            }
+            Ok(match self.stack[idx][&seq_id] {
+                Sequence(ref vec) => vec[index],
+                _ => unreachable!(),
+            })
+        }
+        else { interprerror(self.unknown_id_err(seq_id, stack_key)) }
+    }
+
+    #[inline]
+    fn eval_reassign_seq_index(&mut self,
+                               seq_id: &Token,
+                               index_expr: &Ast,
+                               expr: &Ast,
+                               current_scope: usize,
+                               stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+
+        if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
+            let (mut idx, mut seq_id) = (idx, seq_id.clone());
+            while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
+                idx = n_idx;
+                seq_id = n_id.clone();
+            }
+
+            let seq_len = match self.stack[idx][&seq_id] {
+                Sequence(ref v) => Ok(v.len()),
+                ref data => interprerror(format!(
+                    "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
+                    data.desc(&seq_id)
+                )),
+            }?;
+            let index = convert_signed_index(eval!(index_expr)?, seq_len);
+            if seq_len as usize <= index  {
+                return interprerror(format!(
+                    "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
+                    index,
+                    seq_len));
+            }
+            let new_val = eval!(expr)?;
+            match self.stack[idx].get_mut(&seq_id) {
+                Some(&mut Sequence(ref mut vec)) => vec[index] = new_val,
+                _ => unreachable!(),
+            }
+            Ok(0)
+        }
+        else { interprerror(self.unknown_id_err(seq_id, stack_key)) }
+    }
+
     /// Evaluates the passed in syntax tree
     /// :current_scope the stack frame index currently running in
     /// :restrict_ref optional max frame index referencable
     ///    (not including >= current_scope, which is always ok)
     fn eval(&mut self, ast: &Ast, current_scope: usize, stack_key: StackKey)
             -> Result<Int, InterpreterUpFlow> {
-        self.log_eval(&ast, current_scope, stack_key);
-
-        // syntax noise reducers/shortcuts
-        macro_rules! eval {
-            ($expr:expr) => { self.eval($expr, current_scope, stack_key) };
-        }
+        macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
         macro_rules! highest_frame_idx {
             ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) };
         }
 
+        self.log_eval(ast, current_scope, stack_key);
+
+        // TODO break up
         match *ast {
             Ast::Num(Num(x)) => Ok(x),
             Ast::BinOp(ref token, ref left, ref right) => {
-                match *token {
-                    Pls => Ok(eval!(left)? + eval!(right)?),
-                    Sub => Ok(eval!(left)? - eval!(right)?),
-                    Mul => Ok(eval!(left)? * eval!(right)?),
-                    Mod => Ok(eval!(left)? % eval!(right)?),
-                    Div => {
-                        match eval!(right)? {
-                            0 => interprerror("Interpreter: Cannot divide by zero"),
-                            divisor => Ok(eval!(left)? / divisor),
-                        }
-                    },
-                    And => {
-                        match eval!(left)? {
-                            0 => Ok(0),
-                            _ => eval!(right),
-                        }
-                    },
-                    Or => {
-                        match eval!(left)? {
-                            0 => eval!(right),
-                            x => Ok(x),
-                        }
-                    },
-                    Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
-                    Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
-                    Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
-                    GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
-                    LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
-                    _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
-                }
+                self.eval_bin_op(token, left, right, current_scope, stack_key)
             },
             Ast::LeftUnaryOp(Sub, ref val) => Ok(-eval!(val)?),
             Ast::LeftUnaryOp(Not, ref val) => Ok(match eval!(val)? {
@@ -261,19 +485,19 @@ impl Interpreter {
             },
             Ast::Reassign(ref id, ref expr) => {
                 // reassign to any parent scope
-                if let Some(idx) = highest_frame_idx!(&id) {
+                if let Some(idx) = highest_frame_idx!(id) {
                     let v = eval!(expr)?;
-                    *self.stack[idx].get_mut(&id).unwrap() = Value(v);
+                    *self.stack[idx].get_mut(id).unwrap() = Value(v);
                     Ok(v)
                 }
                 else {
                     interprerror(format!("{}, did you mean `var {:?} =`?",
-                        self.unknown_id_err(&id, stack_key), id))
+                        self.unknown_id_err(id, stack_key), id))
                 }
             },
             Ast::Refer(ref id) => {
-                if let Some(idx) = highest_frame_idx!(&id) {
-                    match self.stack[idx][&id] {
+                if let Some(idx) = highest_frame_idx!(id) {
+                    match self.stack[idx][id] {
                         Value(v) => Ok(v),
                         _ => interprerror(format!(
                             "Interpreter: Invalid reference to non number `{:?}`",
@@ -281,9 +505,7 @@ impl Interpreter {
                         )),
                     }
                 }
-                else {
-                    interprerror(self.unknown_id_err(&id, stack_key))
-                }
+                else { interprerror(self.unknown_id_err(id, stack_key)) }
             },
             Ast::If(ref expr, ref block, ref else_line, _) => Ok(match eval!(expr)? {
                 0 => {
@@ -300,62 +522,10 @@ impl Interpreter {
                 },
             }),
             Ast::While(ref expr, ref block) => {
-                if eval!(expr)? == 0 {
-                    return Ok(0);
-                }
-                let loop_token = Id("#loop".into());
-                self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
-                loop {
-                    self.stack.push(HashMap::new());
-                    match eval!(block) {
-                        Err(err) => {
-                            match err {
-                                LoopBreak => break,
-                                LoopContinue => (),
-                                e => return Err(e),
-                            }
-                        },
-                        Ok(_) => (),
-                    };
-                    self.stack.pop();
-                    if eval!(expr)? == 0 {
-                        break;
-                    }
-                }
-                self.stack[current_scope].remove(&loop_token);
-                Ok(0)
+                self.eval_while(expr, block, current_scope, stack_key)
             },
             Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block) => {
-                let mut list = self.eval_seq(list_expr, current_scope, stack_key)?;
-                if list.is_empty() {
-                    return Ok(0);
-                }
-                let loop_token = Id("#loop".into());
-                self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
-                let mut index = 0;
-                while index < list.len() {
-                    let mut frame = HashMap::new();
-                    if let Some(ref id) = *idx_id {
-                        frame.insert(id.clone(), Value(index as i32));
-                    }
-                    frame.insert(item_id.clone(), Value(list[index]));
-                    self.stack.push(frame);
-                    match eval!(block) {
-                        Err(err) => {
-                            match err {
-                                LoopBreak => break,
-                                LoopContinue => (),
-                                e => return Err(e),
-                            }
-                        },
-                        Ok(_) => (),
-                    };
-                    self.stack.pop();
-                    index += 1;
-                    list = self.eval_seq(list_expr, current_scope, stack_key)?;
-                }
-                self.stack[current_scope].remove(&loop_token);
-                Ok(0)
+                self.eval_for_in(idx_id, item_id, list_expr, block, current_scope, stack_key)
             },
             Ast::LoopNav(ref token) => {
                 let loop_token = Id("#loop".into());
@@ -372,7 +542,7 @@ impl Interpreter {
             },
             Ast::AssignFun(ref id, ref args, ref block) => {
                 let top = self.stack.len() - 1;
-                match self.stack[current_scope].get(&id) {
+                match self.stack[current_scope].get(id) {
                     None | Some(&Callable(..)) => (), // overwrite
                     Some(other) => return interprerror(format!(
                         "Interpreter: Declaration `fun {:?}` conflicts with `{}` in same scope",
@@ -383,130 +553,18 @@ impl Interpreter {
                 Ok(0)
             },
             Ast::Call(ref id, ref args) => {
-                if let Some(idx) = highest_frame_idx!(&id) {
-                    let mut builtin_callable = None;
-                    if let &BuiltinCallable(builtin) = &self.stack[idx][&id] {
-                        builtin_callable = Some(builtin);
-                    }
-                    if let Some(builtin) = builtin_callable {
-                        return self.call_builtin(builtin, args, current_scope, stack_key);
-                    }
-
-                    let (mut arg_ids, callable_block) = {
-                        match &self.stack[idx][&id] {
-                            &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
-                            _ => {
-                                return interprerror(format!(
-                                    "Interpreter: Invalid reference to non callable `{:?}`",
-                                    id
-                                ))
-                            },
-                        }
-                    };
-
-                    // construct new function call stack frame
-                    let mut f_frame = HashMap::new();
-                    for i in 0..args.len() {
-                        let data = match args[i] {
-                            ref a @ Ast::Seq(..) => {
-                                Sequence(self.eval_seq(a, current_scope, stack_key)?)
-                            },
-                            Ast::ReferSeq(ref id) => {
-                                if let Some(idx) = highest_frame_idx!(&id) {
-                                    Ref(idx, id.clone())
-                                }
-                                else {
-                                    return interprerror(self.unknown_id_err(&id, stack_key));
-                                }
-                            },
-                            ref ast => Value(eval!(ast)?),
-                        };
-                        f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
-                    }
-                    self.stack.push(f_frame);
-
-                    let out = match self.eval(
-                        &callable_block,
-                        current_scope + 1,
-                        StackKey::from_fun_call(idx, current_scope))
-                    {
-                        Err(FunReturn(value)) => Ok(value),
-                        Ok(x) => Ok(x),
-                        x => x,
-                    };
-
-                    // clean stack
-                    self.stack.pop();
-                    return out;
-                }
-                else {
-                    interprerror(self.unknown_id_err(&id, stack_key))
-                }
+                self.eval_fun_call(id, args, current_scope, stack_key)
             },
             Ast::Return(ref expr) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr) => {
-                if let Some(idx) = highest_frame_idx!(seq_id) {
-                    let (mut idx, mut seq_id) = (idx, seq_id.clone());
-                    while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
-                        idx = n_idx;
-                        seq_id = n_id.clone();
-                    }
-
-                    let seq_len = match self.stack[idx][&seq_id] {
-                        Sequence(ref v) => Ok(v.len()),
-                        ref data => interprerror(format!(
-                            "Interpreter: Invalid sequence index reference to non-sequence `{}`",
-                            data.desc(&seq_id)
-                        )),
-                    }?;
-                    let index = convert_signed_index(eval!(index_expr)?, seq_len);
-                    if seq_len as usize <= index  {
-                        return interprerror(format!(
-                            "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
-                            index,
-                            seq_len));
-                    }
-                    Ok(match self.stack[idx][&seq_id] {
-                        Sequence(ref vec) => vec[index],
-                        _ => unreachable!(),
-                    })
-                }
-                else { interprerror(self.unknown_id_err(&seq_id, stack_key)) }
+                self.eval_refer_seq_index(seq_id, index_expr, current_scope, stack_key)
             },
             Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr) => {
-                if let Some(idx) = highest_frame_idx!(&seq_id) {
-                    let (mut idx, mut seq_id) = (idx, seq_id.clone());
-                    while let Ref(n_idx, ref n_id) = self.stack[idx][&seq_id] {
-                        idx = n_idx;
-                        seq_id = n_id.clone();
-                    }
-
-                    let seq_len = match self.stack[idx][&seq_id] {
-                        Sequence(ref v) => Ok(v.len()),
-                        ref data => interprerror(format!(
-                            "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
-                            data.desc(&seq_id)
-                        )),
-                    }?;
-                    let index = convert_signed_index(eval!(index_expr)?, seq_len);
-                    if seq_len as usize <= index  {
-                        return interprerror(format!(
-                            "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
-                            index,
-                            seq_len));
-                    }
-                    let new_val = eval!(expr)?;
-                    match self.stack[idx].get_mut(&seq_id) {
-                        Some(&mut Sequence(ref mut vec)) => vec[index] = new_val,
-                        _ => unreachable!(),
-                    }
-                    Ok(0)
-                }
-                else { interprerror(self.unknown_id_err(&seq_id, stack_key)) }
+                self.eval_reassign_seq_index(seq_id, index_expr, expr, current_scope, stack_key)
             },
             Ast::AssignSeq(ref id, ref list) => {
                 let v = self.eval_seq(list, current_scope, stack_key)?;
-                match self.stack[current_scope].get(&id) {
+                match self.stack[current_scope].get(id) {
                     None | Some(&Sequence(..)) => (), // overwrite
                     Some(other) => return interprerror(format!(
                         "Interpreter: Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
@@ -556,7 +614,7 @@ impl Interpreter {
                 Ok(evals)
             }
             Ast::ReferSeq(ref id) => {
-                if let Some(idx) = self.highest_frame_idx(&id, current_scope, stack_key) {
+                if let Some(idx) = self.highest_frame_idx(id, current_scope, stack_key) {
                     let (mut idx, mut id) = (idx, id.clone());
                     while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
                         idx = n_idx;
@@ -571,7 +629,7 @@ impl Interpreter {
                         )),
                     }
                 }
-                else { interprerror(self.unknown_id_err(&id, stack_key)) }
+                else { interprerror(self.unknown_id_err(id, stack_key)) }
             },
             _ => interprerror(format!("Interpreter: Unexpected Seq syntax {:?}", list)),
         }
@@ -580,15 +638,15 @@ impl Interpreter {
     fn call_builtin(&mut self, builtin: Builtin, args: &[Ast], current_scope: usize, stack_key: StackKey)
         -> Result<Int, InterpreterUpFlow>
     {
-        let mut arg1 = None;
-        if args.len() == 2 {
-            arg1 = Some(self.eval(&args[1], current_scope, stack_key)?);
+        let arg1 = if args.len() == 2 {
+            Some(self.eval(&args[1], current_scope, stack_key)?)
         }
+        else { None };
 
         // all builtins are core lib for seq, ie first arg is a seq
         match args[0] {
             Ast::ReferSeq(ref id) => {
-                if let Some(idx) = self.highest_frame_idx(&id, current_scope, stack_key) {
+                if let Some(idx) = self.highest_frame_idx(id, current_scope, stack_key) {
                     let (mut idx, mut id) = (idx, id.clone());
                     while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
                         idx = n_idx;
@@ -597,7 +655,7 @@ impl Interpreter {
                     match self.stack[idx].get_mut(&id) {
                         Some(&mut Sequence(ref mut v)) => {
                             match builtin {
-                                Builtin::SeqSize => {
+                                Builtin::Size => {
                                     Ok(v.len() as i32)
                                 },
                                 Builtin::SeqAdd => {
@@ -617,13 +675,13 @@ impl Interpreter {
                         None => unreachable!(),
                     }
                 }
-                else { interprerror(self.unknown_id_err(&id, stack_key)) }
+                else { interprerror(self.unknown_id_err(id, stack_key)) }
             },
             // otherwise, ie literal, just evaluate it
             ref ast => {
                 let literal = self.eval_seq(ast, current_scope, stack_key)?;
                 match builtin {
-                    Builtin::SeqSize => {
+                    Builtin::Size => {
                         Ok(literal.len() as i32)
                     },
                     Builtin::SeqAdd => Ok(0),
