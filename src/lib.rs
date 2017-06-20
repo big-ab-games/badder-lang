@@ -779,11 +779,21 @@ mod core_lib {
     }
 
     #[test]
+    fn seq_size_literal() {
+        assert_program!("size((1,2,3,4))" => 4);
+    }
+
+    #[test]
     fn seq_remove() {
         assert_program!("seq nums[] = 1,2,3";
                         "remove(nums[], 1)"; // simple call style
                         "nums[].remove(0)";
                         "nums[].size()" => 1);
+    }
+
+    #[test]
+    fn seq_remove_literal() {
+        assert_program!("remove((1,2,3,4), 2)" => 0);
     }
 
     #[test]
@@ -802,6 +812,11 @@ mod core_lib {
                         "add(nums[], 4999)"; // simple call style
                         "nums[].add(5000)";
                         "nums[3]" => 5000);
+    }
+
+    #[test]
+    fn seq_add_literal() {
+        assert_program!("add((1,2,3,4), 5000)" => 0);
     }
 }
 
