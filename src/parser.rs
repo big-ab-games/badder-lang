@@ -64,7 +64,7 @@ impl fmt::Debug for Ast {
             Ast::While(ref bool_expr, _) => write!(f, "While({:?},_)", bool_expr),
             Ast::ForIn(None, ref id, ref list, ..) => write!(f, "ForIn({:?}:{:?})", id, list),
             Ast::ForIn(Some(ref idx_id), ref id, ref list, ..) => {
-                write!(f, "ForIn({:?}{:?}:{:?})", idx_id, id, list)
+                write!(f, "ForIn({:?},{:?}:{:?})", idx_id, id, list)
             },
             Ast::LoopNav(ref t) => write!(f, "LoopNav({:?})", t),
             Ast::AssignFun(ref t, ref args, _) => write!(f, "AssignFun({:?},{:?},_)", t, args),
@@ -118,8 +118,8 @@ impl Ast {
     }
 
     pub fn debug_string(&self) -> String {
-        match self {
-            pair @ &Ast::LinePair(..) => {
+        match *self {
+            ref pair @ Ast::LinePair(..) => {
                 let mut next = pair;
                 let mut out = String::new();
                 while let &Ast::LinePair(ref l1, ref l2) = next {
@@ -128,18 +128,32 @@ impl Ast {
                 }
                 out + &next.debug_string()
             },
-            &Ast::Line(scope, ref expr) =>
-                format!("-{}{}> {}", scope, "-".repeat(scope), expr.debug_string()),
-            &Ast::If(ref expr, ref block, None, _) => format!("If({})\n{}", expr.debug_string(), block.debug_string()),
-            &Ast::If(ref expr, ref block, Some(ref elif), _) => {
+            Ast::Line(scope, ref expr) => {
+                format!("-{}{}> {}", scope, "-".repeat(scope), expr.debug_string())
+            },
+            Ast::If(ref expr, ref block, None, _) => {
+                format!("If({})\n{}", expr.debug_string(), block.debug_string())
+            },
+            Ast::If(ref expr, ref block, Some(ref elif), _) => {
                 format!("If({})\n{}\nElse{}",
                         expr.debug_string(),
                         block.debug_string(),
                         elif.debug_string())
             },
-            &Ast::While(ref expr, ref block) => format!("While({})\n{}", expr.debug_string(), block.debug_string()),
-            &Ast::AssignFun(ref id, ref args, ref block) => format!("AssignFun({:?}, {:?})\n{}", id, args, block.debug_string()),
-            x => format!("{:?}", x),
+            Ast::While(ref expr, ref block) => {
+                format!("While({})\n{}", expr.debug_string(), block.debug_string())
+            },
+            ref f @ Ast::ForIn(..) => {
+                let mut dbg = format!("{:?}", f);
+                if let Ast::ForIn(_,_,_, ref block) = *f {
+                    dbg = dbg + "\n" + &block.debug_string();
+                }
+                dbg
+            },
+            Ast::AssignFun(ref id, ref args, ref block) => {
+                format!("AssignFun({:?}, {:?})\n{}", id, args, block.debug_string())
+            },
+            ref x => format!("{:?}", x),
         }
     }
 
