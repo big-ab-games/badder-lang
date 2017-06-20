@@ -461,6 +461,7 @@ impl Interpreter {
     fn eval(&mut self, ast: &Ast, current_scope: usize, stack_key: StackKey)
             -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
+        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
         macro_rules! highest_frame_idx {
             ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) };
         }
@@ -562,7 +563,7 @@ impl Interpreter {
                 self.eval_reassign_seq_index(seq_id, index_expr, expr, current_scope, stack_key)
             },
             Ast::AssignSeq(ref id, ref list) => {
-                let v = self.eval_seq(list, current_scope, stack_key)?;
+                let v = eval_seq!(list)?;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Sequence(..)) => (), // overwrite
                     Some(other) => return interprerror(format!(
@@ -604,11 +605,13 @@ impl Interpreter {
     fn eval_seq(&mut self, list: &Ast, current_scope: usize, stack_key: StackKey)
         -> Result<Vec<Int>, InterpreterUpFlow>
     {
+        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+
         match *list {
             Ast::Seq(ref exprs) => {
                 let mut evals = vec![];
                 for ex in exprs {
-                    evals.push(self.eval(ex, current_scope, stack_key)?);
+                    evals.push(eval!(ex)?);
                 }
                 Ok(evals)
             }
