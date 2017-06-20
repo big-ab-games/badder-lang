@@ -23,10 +23,18 @@ pub type Int = i32;
 
 const MAX_STACK: usize = 50;
 
+#[derive(Debug, Clone, Copy)]
+enum Builtin {
+    SeqSize,
+    SeqAdd,
+    SeqRemove,
+}
+
 enum FrameData {
     Value(Int),
     /// Callable(args, block)
     Callable(Vec<Token>, Arc<Ast>),
+    BuiltinCallable(Builtin),
     ///Ref(frame_index, id)
     Ref(usize, Token),
     /// Sequence of values
@@ -40,6 +48,7 @@ impl fmt::Debug for FrameData {
         {
             Value(x) => write!(f, "Value({})", x),
             Callable(..) => write!(f, "Callable"),
+            BuiltinCallable(..) => write!(f, "BuiltinCallable"),
             Sequence(ref vals) => write!(f, "Sequence({:?})", vals),
             Ref(i, ref t) => write!(f, "Ref([{}]:{:?})", i, t),
             LoopMarker => write!(f, "LoopMarker"),
@@ -58,10 +67,17 @@ impl FrameData {
                             .map(|a| format!("{:?}",a))
                             .fold(String::new(), |all,n| all + &n)
                 ),
-            Sequence(..) => format!("{:?}[]", id),
-            Ref(..) => "reference".into(),
+            Sequence(..) => format!("{:?}", id),
+            BuiltinCallable(..) => format!("{:?}", id),
+            Ref(..) => format!("ref->{:?}", id),
             _ => "_".into(),
         }
+    }
+
+    fn add_builtins_to(frame: &mut HashMap<Token, FrameData>) {
+        frame.insert(Id("size(l)".into()), BuiltinCallable(Builtin::SeqSize));
+        frame.insert(Id("add(ln)".into()), BuiltinCallable(Builtin::SeqAdd));
+        frame.insert(Id("remove(ln)".into()), BuiltinCallable(Builtin::SeqRemove));
     }
 }
 
@@ -109,7 +125,7 @@ use InterpreterUpFlow::*;
 
 #[derive(Debug)]
 pub struct Interpreter {
-    stack: Vec<HashMap<lexer::Token, FrameData>>,
+    stack: Vec<HashMap<Token, FrameData>>,
 }
 
 #[inline]
@@ -124,15 +140,23 @@ fn interprerror<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
     Err(Error(desc.into()))
 }
 
+fn convert_signed_index(mut i: i32, length: usize) -> usize {
+    let len = length as i32;
+    if i < 0 { i = (len + i % len) % len; }
+    i as usize
+}
+
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter { stack: vec![HashMap::new()] }
+        let mut init_frame = HashMap::new();
+        FrameData::add_builtins_to(&mut init_frame);
+        Interpreter { stack: vec![init_frame] }
     }
 
     fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey)
         -> String
     {
-        let keys: HashSet<&lexer::Token> = self.stack
+        let keys: HashSet<&Token> = self.stack
             .iter()
             .enumerate()
             .filter(|&(i, _)| stack_key.can_access(i))
@@ -360,6 +384,14 @@ impl Interpreter {
             },
             Ast::Call(ref id, ref args) => {
                 if let Some(idx) = highest_frame_idx!(&id) {
+                    let mut builtin_callable = None;
+                    if let &BuiltinCallable(builtin) = &self.stack[idx][&id] {
+                        builtin_callable = Some(builtin);
+                    }
+                    if let Some(builtin) = builtin_callable {
+                        return self.call_builtin(builtin, args, current_scope, stack_key);
+                    }
+
                     let (mut arg_ids, callable_block) = {
                         match &self.stack[idx][&id] {
                             &Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
@@ -421,17 +453,13 @@ impl Interpreter {
                     }
 
                     let seq_len = match self.stack[idx][&seq_id] {
-                        Sequence(ref v) => Ok(v.len() as i32),
+                        Sequence(ref v) => Ok(v.len()),
                         ref data => interprerror(format!(
                             "Interpreter: Invalid sequence index reference to non-sequence `{}`",
                             data.desc(&seq_id)
                         )),
                     }?;
-                    let index = {
-                        let mut i = eval!(index_expr)?;
-                        if i < 0 { i = seq_len + (i % seq_len); }
-                        i as usize
-                    };
+                    let index = convert_signed_index(eval!(index_expr)?, seq_len);
                     if seq_len as usize <= index  {
                         return interprerror(format!(
                             "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
@@ -454,17 +482,13 @@ impl Interpreter {
                     }
 
                     let seq_len = match self.stack[idx][&seq_id] {
-                        Sequence(ref v) => Ok(v.len() as i32),
+                        Sequence(ref v) => Ok(v.len()),
                         ref data => interprerror(format!(
                             "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
                             data.desc(&seq_id)
                         )),
                     }?;
-                    let index = {
-                        let mut i = eval!(index_expr)?;
-                        if i < 0 { i = seq_len + (i % seq_len); }
-                        i as usize
-                    };
+                    let index = convert_signed_index(eval!(index_expr)?, seq_len);
                     if seq_len as usize <= index  {
                         return interprerror(format!(
                             "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
@@ -550,6 +574,63 @@ impl Interpreter {
                 else { interprerror(self.unknown_id_err(&id, stack_key)) }
             },
             _ => interprerror(format!("Interpreter: Unexpected Seq syntax {:?}", list)),
+        }
+    }
+
+    fn call_builtin(&mut self, builtin: Builtin, args: &[Ast], current_scope: usize, stack_key: StackKey)
+        -> Result<Int, InterpreterUpFlow>
+    {
+        let mut arg1 = None;
+        if args.len() == 2 {
+            arg1 = Some(self.eval(&args[1], current_scope, stack_key)?);
+        }
+
+        // all builtins are core lib for seq, ie first arg is a seq
+        match args[0] {
+            Ast::ReferSeq(ref id) => {
+                if let Some(idx) = self.highest_frame_idx(&id, current_scope, stack_key) {
+                    let (mut idx, mut id) = (idx, id.clone());
+                    while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
+                        idx = n_idx;
+                        id = n_id.clone();
+                    }
+                    match self.stack[idx].get_mut(&id) {
+                        Some(&mut Sequence(ref mut v)) => {
+                            match builtin {
+                                Builtin::SeqSize => {
+                                    Ok(v.len() as i32)
+                                },
+                                Builtin::SeqAdd => {
+                                    v.push(arg1.unwrap());
+                                    Ok(0)
+                                }
+                                Builtin::SeqRemove => {
+                                    let index = convert_signed_index(arg1.unwrap(), v.len());
+                                    v.remove(index);
+                                    Ok(0)
+                                }
+                            }
+                        },
+                        Some(ref data) => interprerror(format!(
+                            "Interpreter: Invalid sequence referal to non-sequence `{}`",
+                            data.desc(&id)
+                        )),
+                        None => unreachable!(),
+                    }
+                }
+                else { interprerror(self.unknown_id_err(&id, stack_key)) }
+            },
+            // otherwise, ie literal, just evaluate it
+            ref ast => {
+                let seq = self.eval_seq(ast, current_scope, stack_key)?;
+                match builtin {
+                    Builtin::SeqSize => {
+                        Ok(seq.len() as i32)
+                    },
+                    // mutating functions have no effect on literals
+                    Builtin::SeqAdd | Builtin::SeqRemove => Ok(0),
+                }
+            },
         }
     }
 
@@ -686,33 +767,43 @@ mod fitness {
     }
 }
 
-// #[cfg(test)]
-// mod std_lib {
-//     use super::*;
-//
-//     #[test]
-//     fn seq_size() {
-//         assert_program!("seq nums[] = 1,2,3,4,5,4,3,2,1";
-//                         "size(nums[])"; // simple call style
-//                         "nums[].size()" => 9);
-//     }
-//
-//     #[test]
-//     fn seq_remove() {
-//         assert_program!("seq nums[] = 1,2";
-//                         "remove(nums[], 1)"; // simple call style
-//                         "nums[].remove(0)";
-//                         "nums[].size()" => 0);
-//     }
-//
-//     #[test]
-//     fn seq_insert() {
-//         assert_program!("seq nums[] = 1,2";
-//                         "insert(nums[], 2, 5000)"; // simple call style
-//                         "nums[].insert(2, 5000)";
-//                         "nums[2]" => 5000);
-//     }
-// }
+#[cfg(test)]
+mod core_lib {
+    use super::*;
+
+    #[test]
+    fn seq_size() {
+        assert_program!("seq nums[] = 1,2,3,4,5,4,3,2,1";
+                        "size(nums[])"; // simple call style
+                        "nums[].size()" => 9);
+    }
+
+    #[test]
+    fn seq_remove() {
+        assert_program!("seq nums[] = 1,2,3";
+                        "remove(nums[], 1)"; // simple call style
+                        "nums[].remove(0)";
+                        "nums[].size()" => 1);
+    }
+
+    #[test]
+    fn seq_remove_neg_index() {
+        assert_program!("seq nums[] = 1,2,3";
+                        "nums[].remove(-1)"; // should remove size-1 index
+                        "var last";
+                        "for n in nums[]";
+                        "    last = n";
+                        "last" => 2);
+    }
+
+    #[test]
+    fn seq_add() {
+        assert_program!("seq nums[] = 1,2";
+                        "add(nums[], 4999)"; // simple call style
+                        "nums[].add(5000)";
+                        "nums[3]" => 5000);
+    }
+}
 
 #[cfg(test)]
 mod list_functions {
@@ -775,6 +866,16 @@ mod lists {
     fn index_access() {
         assert_program!("seq nums[] = 1,2,3";
                         "nums[1]" => 2);
+    }
+
+    #[test]
+    fn negative_index_access() {
+        assert_program!("seq nums[] = 1,2,3";
+                        "nums[-1]" => 3);
+        assert_program!("seq nums[] = 1,2,3";
+                        "nums[-3]" => 1);
+        assert_program!("seq nums[] = 1,2,3";
+                        "nums[-13]" => 3);
     }
 
     #[test]
