@@ -606,8 +606,7 @@ impl Interpreter {
                                 }
                                 Builtin::SeqRemove => {
                                     let index = convert_signed_index(arg1.unwrap(), v.len());
-                                    v.remove(index);
-                                    Ok(0)
+                                    Ok(v.remove(index))
                                 }
                             }
                         },
@@ -622,13 +621,16 @@ impl Interpreter {
             },
             // otherwise, ie literal, just evaluate it
             ref ast => {
-                let seq = self.eval_seq(ast, current_scope, stack_key)?;
+                let literal = self.eval_seq(ast, current_scope, stack_key)?;
                 match builtin {
                     Builtin::SeqSize => {
-                        Ok(seq.len() as i32)
+                        Ok(literal.len() as i32)
                     },
-                    // mutating functions have no effect on literals
-                    Builtin::SeqAdd | Builtin::SeqRemove => Ok(0),
+                    Builtin::SeqAdd => Ok(0),
+                    Builtin::SeqRemove => {
+                        let index = convert_signed_index(arg1.unwrap(), literal.len());
+                        Ok(literal[index])
+                    }
                 }
             },
         }
@@ -780,7 +782,7 @@ mod core_lib {
 
     #[test]
     fn seq_size_literal() {
-        assert_program!("size((1,2,3,4))" => 4);
+        assert_program!("size((5,4,3,2))" => 4);
     }
 
     #[test]
@@ -792,8 +794,14 @@ mod core_lib {
     }
 
     #[test]
+    fn seq_remove_return_removed() {
+        assert_program!("seq nums[] = 1,2,3";
+                        "nums[].remove(0)" => 1);
+    }
+
+    #[test]
     fn seq_remove_literal() {
-        assert_program!("remove((1,2,3,4), 2)" => 0);
+        assert_program!("remove((5,4,3,2), 2)" => 3);
     }
 
     #[test]
@@ -816,7 +824,7 @@ mod core_lib {
 
     #[test]
     fn seq_add_literal() {
-        assert_program!("add((1,2,3,4), 5000)" => 0);
+        assert_program!("add((5,4,3,2), 5000)" => 0);
     }
 }
 
