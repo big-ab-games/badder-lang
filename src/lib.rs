@@ -467,7 +467,6 @@ impl Interpreter {
 
         self.log_eval(ast, current_scope, stack_key);
 
-        // TODO break up
         match *ast {
             Ast::Num(Num(x)) => Ok(x),
             Ast::BinOp(ref token, ref left, ref right) => {
