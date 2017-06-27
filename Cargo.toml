@@ -1,11 +1,11 @@
 [package]
-name = "badder_interpreter"
+name = "badder_lang"
 version = "0.1.0"
 authors = ["Alex Butler <alexheretic@gmail.com>"]
 
 [dependencies]
-log = "0"
-string_cache = "0"
+log = "0.3"
+string_cache = "0.6"
 
 [dev-dependencies]
-pretty_env_logger = "0"
+pretty_env_logger = "0.1"
