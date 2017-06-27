@@ -1,6 +1,6 @@
-extern crate badder_interpreter;
+extern crate badder_lang;
 
-use badder_interpreter::*;
+use badder_lang::*;
 
 #[test]
 fn mix() {
