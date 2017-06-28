@@ -22,15 +22,16 @@ use common::*;
 pub type Int = i32;
 
 const MAX_STACK: usize = 50;
+const UNKNOWN_SRC_REF: SourceRef = SourceRef((0,0), (0,0));
 
 #[derive(Debug, Clone, Copy)]
-enum Builtin {
+pub enum Builtin {
     Size,
     SeqAdd,
     SeqRemove,
 }
 
-enum FrameData {
+pub enum FrameData {
     Value(Int),
     /// Callable(args, block)
     Callable(Vec<Token>, Arc<Ast>),
@@ -135,9 +136,8 @@ fn bool_to_num(b: bool) -> Int {
     if b { 1 } else { 0 }
 }
 
-fn interprerror<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
-    // TODO
-    Err(Error(BadderError::at( SourceRef((0,0),(0,0)) ).describe(desc.into())))
+fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
+    Err(Error(BadderError::at(UNKNOWN_SRC_REF).describe(desc.into())))
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
@@ -219,7 +219,7 @@ impl Interpreter {
             Mod => Ok(eval!(left)? % eval!(right)?),
             Div => {
                 match eval!(right)? {
-                    0 => interprerror("Interpreter: Cannot divide by zero"),
+                    0 => parent_error("Interpreter: Cannot divide by zero"),
                     divisor => Ok(eval!(left)? / divisor),
                 }
             },
@@ -240,7 +240,7 @@ impl Interpreter {
             Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
             GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
             LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
-            _ => interprerror(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
+            _ => parent_error(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
         }
     }
 
@@ -336,7 +336,7 @@ impl Interpreter {
                 match self.stack[idx][id] {
                     Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
                     _ => {
-                        return interprerror(format!(
+                        return parent_error(format!(
                             "Interpreter: Invalid reference to non callable `{:?}`",
                             id
                         ))
@@ -354,7 +354,7 @@ impl Interpreter {
                             Ref(idx, id.clone())
                         }
                         else {
-                            return interprerror(self.unknown_id_err(id, stack_key));
+                            return parent_error(self.unknown_id_err(id, stack_key));
                         }
                     },
                     ref ast => Value(eval!(ast)?),
@@ -375,7 +375,7 @@ impl Interpreter {
             self.stack.pop();
             return out;
         }
-        else { interprerror(self.unknown_id_err(id, stack_key)) }
+        else { parent_error(self.unknown_id_err(id, stack_key)) }
     }
 
     #[inline]
@@ -395,14 +395,14 @@ impl Interpreter {
 
             let seq_len = match self.stack[idx][&seq_id] {
                 Sequence(ref v) => Ok(v.len()),
-                ref data => interprerror(format!(
+                ref data => parent_error(format!(
                     "Interpreter: Invalid sequence index reference to non-sequence `{}`",
                     data.desc(&seq_id)
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
             if seq_len as usize <= index  {
-                return interprerror(format!(
+                return parent_error(format!(
                     "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
                     index,
                     seq_len));
@@ -412,7 +412,7 @@ impl Interpreter {
                 _ => unreachable!(),
             })
         }
-        else { interprerror(self.unknown_id_err(seq_id, stack_key)) }
+        else { parent_error(self.unknown_id_err(seq_id, stack_key)) }
     }
 
     #[inline]
@@ -433,14 +433,14 @@ impl Interpreter {
 
             let seq_len = match self.stack[idx][&seq_id] {
                 Sequence(ref v) => Ok(v.len()),
-                ref data => interprerror(format!(
+                ref data => parent_error(format!(
                     "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
                     data.desc(&seq_id)
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
             if seq_len as usize <= index  {
-                return interprerror(format!(
+                return parent_error(format!(
                     "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
                     index,
                     seq_len));
@@ -452,7 +452,7 @@ impl Interpreter {
             }
             Ok(0)
         }
-        else { interprerror(self.unknown_id_err(seq_id, stack_key)) }
+        else { parent_error(self.unknown_id_err(seq_id, stack_key)) }
     }
 
     /// Evaluates the passed in syntax tree
@@ -469,7 +469,7 @@ impl Interpreter {
 
         self.log_eval(ast, current_scope, stack_key);
 
-        match *ast {
+        let result = match *ast {
             Ast::Num(Num(x), ..) => Ok(x),
             Ast::BinOp(ref token, ref left, ref right, ..) => {
                 self.eval_bin_op(token, left, right, current_scope, stack_key)
@@ -492,21 +492,20 @@ impl Interpreter {
                     Ok(v)
                 }
                 else {
-                    interprerror(format!("{}, did you mean `var {:?} =`?",
-                        self.unknown_id_err(id, stack_key), id))
+                    parent_error(format!("{}, did you mean `var {:?} =`?",
+                                         self.unknown_id_err(id, stack_key), id))
                 }
             },
             Ast::Refer(ref id, ..) => {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
                         Value(v) => Ok(v),
-                        _ => interprerror(format!(
+                        _ => parent_error(format!(
                             "Interpreter: Invalid reference to non number `{:?}`",
-                            id
-                        )),
+                            id)),
                     }
                 }
-                else { interprerror(self.unknown_id_err(id, stack_key)) }
+                else { parent_error(self.unknown_id_err(id, stack_key)) }
             },
             Ast::If(ref expr, ref block, ref else_line, ..) => Ok(match eval!(expr)? {
                 0 => {
@@ -534,21 +533,24 @@ impl Interpreter {
                     match *token {
                         Break => Err(LoopBreak),
                         Continue => Err(LoopContinue),
-                        _ => interprerror(format!("Interpreter: Unknown loop nav `{:?}`", token)),
+                        _ => parent_error(format!("Interpreter: Unknown loop nav `{:?}`", token)),
                     }
                 }
                 else {
-                    interprerror(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
+                    parent_error(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
                 }
             },
             Ast::AssignFun(ref id, ref args, ref block, ..) => {
                 let top = self.stack.len() - 1;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Callable(..)) => (), // overwrite
-                    Some(other) => return interprerror(format!(
-                        "Interpreter: Declaration `fun {:?}` conflicts with `{}` in same scope",
-                        id,
-                        other.desc(id))),
+                    Some(other) => {
+                        let desc = format!(
+                            "Interpreter: Declaration `fun {:?}` conflicts with `{}` in same scope",
+                            id,
+                            other.desc(id));
+                        return Err(Error(BadderError::at(ast.src()).describe(desc)));
+                    }
                 };
                 self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
                 Ok(0)
@@ -567,10 +569,13 @@ impl Interpreter {
                 let v = eval_seq!(list)?;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Sequence(..)) => (), // overwrite
-                    Some(other) => return interprerror(format!(
-                        "Interpreter: Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
-                        id,
-                        other.desc(id))),
+                    Some(other) => {
+                        let desc = format!(
+                            "Interpreter: Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
+                            id,
+                            other.desc(id));
+                        return Err(Error(BadderError::at(ast.src()).describe(desc)));
+                    }
                 };
                 self.stack[current_scope].insert(id.clone(), Sequence(v));
                 Ok(0)
@@ -578,7 +583,7 @@ impl Interpreter {
             Ast::Line(scope, ref expr, ..) => {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
-                    return interprerror("stack overflow");
+                    return parent_error("stack overflow");
                 }
 
                 while self.stack.len() < scope + 1 {
@@ -599,7 +604,19 @@ impl Interpreter {
                 eval!(next)
             },
             Ast::Empty(..) => Ok(0),
-            _ => panic!("Interpreter: Unexpected syntax {:?}", ast),
+            _ => parent_error(format!("Interpreter: Unexpected syntax {:?}", ast)),
+        };
+
+        match result {
+            Err(Error(BadderError{ description, src })) => {
+                if src == UNKNOWN_SRC_REF {
+                    Err(Error(BadderError::at(ast.src()).describe(description)))
+                }
+                else {
+                    Err(Error(BadderError::at(src).describe(description)))
+                }
+            },
+            x => x
         }
     }
 
@@ -608,7 +625,7 @@ impl Interpreter {
     {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
-        match *list {
+        let result = match *list {
             Ast::Seq(ref exprs, ..) => {
                 let mut evals = vec![];
                 for ex in exprs {
@@ -626,15 +643,27 @@ impl Interpreter {
 
                     match self.stack[idx][&id] {
                         Sequence(ref v) => Ok(v.clone()),
-                        ref data => interprerror(format!(
+                        ref data => parent_error(format!(
                             "Interpreter: Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
                         )),
                     }
                 }
-                else { interprerror(self.unknown_id_err(id, stack_key)) }
+                else { parent_error(self.unknown_id_err(id, stack_key)) }
             },
-            _ => interprerror(format!("Interpreter: Unexpected Seq syntax {:?}", list)),
+            _ => parent_error(format!("Interpreter: Unexpected Seq syntax {:?}", list)),
+        };
+
+        match result {
+            Err(Error(BadderError{ description, src })) => {
+                if src == UNKNOWN_SRC_REF {
+                    Err(Error(BadderError::at(list.src()).describe(description)))
+                }
+                else {
+                    Err(Error(BadderError::at(src).describe(description)))
+                }
+            },
+            x => x
         }
     }
 
@@ -671,14 +700,14 @@ impl Interpreter {
                                 }
                             }
                         },
-                        Some(ref data) => interprerror(format!(
+                        Some(ref data) => parent_error(format!(
                             "Interpreter: Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
                         )),
                         None => unreachable!(),
                     }
                 }
-                else { interprerror(self.unknown_id_err(id, stack_key)) }
+                else { parent_error(self.unknown_id_err(id, stack_key)) }
             },
             // otherwise, ie literal, just evaluate it
             ref ast => {
@@ -697,7 +726,7 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, ast: Ast) -> Res<Int> {
+    pub fn evaluate(&mut self, ast: Ast) -> Res<Int> {
         match self.eval(&ast, 0, StackKey::default()) {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
@@ -726,7 +755,7 @@ mod util {
 
         thread::spawn(move || {
             let before_interp = Instant::now();
-            sender.send(Interpreter::new().interpret(code)).unwrap();
+            sender.send(Interpreter::new().evaluate(code)).unwrap();
             debug!("interpreted in {:?}", before_interp.elapsed());
         });
 
@@ -756,7 +785,7 @@ mod util {
         eval_within(code, Duration::from_secs(1)).unwrap()
     }
 
-    pub fn error(code: &str) -> String {
+    pub fn error(code: &str) -> BadderError {
         let _ = pretty_env_logger::init();
 
         let out = eval_within(code, Duration::from_secs(1));
@@ -765,7 +794,7 @@ mod util {
         }
         assert!(out.is_err(), format!("Unexpected {:?}", out));
         if let Err(reason) = out {
-            return format!("{:?}", reason);
+            return reason;
         }
         unreachable!();
     }
@@ -790,18 +819,32 @@ mod util {
             )+
             assert_eq!(util::result(&code, true), $out);
         }};
-        ($( $code:expr );+ =>X $( $sub:expr ),+ ) => {
+        ($( $code:expr );+ =>X $( $sub:expr ),+) => {
             let mut code = String::new();
             $(
                 code = code + $code + "\n";
             )+
             let err = util::error(&code);
-            let err_lower = err.to_lowercase();
+            let err_lower = err.description.to_lowercase();
             $(
                 let substring_lower = $sub.to_lowercase();
                 assert!(err_lower.contains(substring_lower.as_str()),
-                    format!("Substring:`{}` not in error: {}", $sub, err));
+                    format!("Substring:`{}` not in error: `{:?}`", $sub, err));
             )+
+        };
+        ($( $code:expr );+ =>X $( $sub:expr ),+; src = $src_ref:expr ) => {
+            let mut code = String::new();
+            $(
+                code = code + $code + "\n";
+            )+
+            let err = util::error(&code);
+            let err_lower = err.description.to_lowercase();
+            $(
+                let substring_lower = $sub.to_lowercase();
+                assert!(err_lower.contains(substring_lower.as_str()),
+                    format!("Substring:`{}` not in error: `{:?}`", $sub, err));
+            )+
+            assert_eq!(err.src, $src_ref);
         };
     }
 }
@@ -823,7 +866,7 @@ mod fitness {
     fn recursive_overflow() {
         assert_program!("fun rec()";
                         "    rec()";
-                        "rec()" =>X "stack overflow");
+                        "rec()" =>X "stack overflow"; src = SourceRef((2,5), (2,10)));
     }
 }
 
@@ -1265,7 +1308,7 @@ mod if_scope {
                         "x + y" => 500);
         assert_program!("if 1";
                         "    var x = 234";
-                        "x" =>X "x", "scope");
+                        "x" =>X "x", "scope"; src = SourceRef((3,1), (3,2)));
     }
 
     #[test]
@@ -1298,7 +1341,7 @@ mod if_scope {
                         "if x is not 0";
                         "   x -= 1"; // dodgy indent
                         "    x += 1";
-                        "x" =>X "indent");
+                        "x" =>X "indent"; src = SourceRef((3,1), (3,4)));
     }
 
     #[test]
@@ -1392,7 +1435,7 @@ mod single_scope {
 
     #[test]
     fn reassignment_no_assign_err() {
-        assert_program!("b = 1" =>X "`b`", "not found");
+        assert_program!("b = 1" =>X "`b`", "not found"; src = SourceRef((1,1), (1,6)));
     }
 
     #[test]

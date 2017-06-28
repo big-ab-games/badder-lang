@@ -969,4 +969,19 @@ mod parser_test {
         let ast = expect_ast!(ast = Ast::Call(_, ast, ..), src = SourceRef((3, 8), (3, 18))).remove(0);
         expect_ast!(ast = Ast::Num(Num(2), ..), src = SourceRef((3, 8), (3, 9)));
     }
+
+    #[test]
+    fn parse_error() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "fum double(x)", // `fun` misspelled -> id
+            "    return x * 2"].join("\n")
+        ).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert!(err.description.contains("double"));
+        assert_eq!(err.src, SourceRef((1, 5), (1, 11)));
+    }
 }
