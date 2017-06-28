@@ -4,11 +4,10 @@ extern crate string_cache;
 mod common;
 mod lexer;
 mod parser;
+pub mod controller;
 
-use lexer::Token;
 use lexer::Token::*;
 use parser::*;
-pub use parser::Parser;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -18,6 +17,10 @@ use std::mem;
 use std::sync::Arc;
 use std::usize;
 use common::*;
+
+pub use lexer::Token;
+pub use parser::{Parser, Ast};
+pub use common::{BadderError, SourceRef};
 
 pub type Int = i32;
 
@@ -31,6 +34,7 @@ pub enum Builtin {
     SeqRemove,
 }
 
+#[derive(Clone)]
 pub enum FrameData {
     Value(Int),
     /// Callable(args, block)
@@ -91,7 +95,7 @@ enum InterpreterUpFlow {
 }
 
 #[derive(Clone, Copy, Default)]
-struct StackKey {
+pub struct StackKey {
     access_up_to: usize,
     access_from: usize,
 }
@@ -126,9 +130,30 @@ impl StackKey {
 use FrameData::*;
 use InterpreterUpFlow::*;
 
+pub trait Overseer {
+    fn oversee(&self,
+               stack: &[HashMap<Token, FrameData>],
+               ast: &Ast,
+               current_scope: usize,
+               stack_key: StackKey) -> Result<(), ()>;
+}
+
+pub struct NoOverseer;
+
+impl Overseer for NoOverseer {
+    fn oversee(&self,
+               _: &[HashMap<Token, FrameData>],
+               _: &Ast,
+               _: usize,
+               _: StackKey) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
-pub struct Interpreter {
+pub struct Interpreter<O: Overseer> {
     stack: Vec<HashMap<Token, FrameData>>,
+    overseer: O
 }
 
 #[inline]
@@ -146,15 +171,18 @@ fn convert_signed_index(mut i: i32, length: usize) -> usize {
     i as usize
 }
 
-impl Default for Interpreter {
-    fn default() -> Interpreter { Interpreter::new() }
+impl Default for Interpreter<NoOverseer> {
+    fn default() -> Interpreter<NoOverseer> { Interpreter::new(NoOverseer) }
 }
 
-impl Interpreter {
-    pub fn new() -> Interpreter {
+impl<O: Overseer> Interpreter<O> {
+    pub fn new(overseer: O) -> Interpreter<O> {
         let mut init_frame = HashMap::new();
         FrameData::add_builtins_to(&mut init_frame);
-        Interpreter { stack: vec![init_frame] }
+        Interpreter {
+            stack: vec![init_frame],
+            overseer,
+        }
     }
 
     fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey)
@@ -469,6 +497,10 @@ impl Interpreter {
 
         self.log_eval(ast, current_scope, stack_key);
 
+        if let Err(_) = self.overseer.oversee(&self.stack, ast, current_scope, stack_key) {
+            return Err(Error(BadderError::at(ast.src()).describe("cancelled")));
+        }
+
         let result = match *ast {
             Ast::Num(Num(x), ..) => Ok(x),
             Ast::BinOp(ref token, ref left, ref right, ..) => {
@@ -726,8 +758,8 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate(&mut self, ast: Ast) -> Res<Int> {
-        match self.eval(&ast, 0, StackKey::default()) {
+    pub fn evaluate(&mut self, ast: &Ast) -> Res<Int> {
+        match self.eval(ast, 0, StackKey::default()) {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
             Err(err) => panic!(err),
@@ -755,7 +787,7 @@ mod util {
 
         thread::spawn(move || {
             let before_interp = Instant::now();
-            sender.send(Interpreter::new().evaluate(code)).unwrap();
+            sender.send(Interpreter::default().evaluate(&code)).unwrap();
             debug!("interpreted in {:?}", before_interp.elapsed());
         });
 

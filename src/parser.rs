@@ -648,8 +648,8 @@ impl<'a> Parser<'a> {
         if self.consume_maybe(Var)?.is_some() {
             let id = self.consume(Id("identifier".into()))?;
             if self.consume_maybe(Ass)?.is_none() {
-                self.consume_any(&[Ass, Eol, Eof])?;
                 let src = src.up_to(self.current_src_ref);
+                self.consume_any(&[Ass, Eol, Eof])?;
                 return Ok(Ast::Assign(id, Ast::Num(Num(0), src).into(), src));
             }
             let expr = self.expr()?;
@@ -886,6 +886,28 @@ mod parser_test {
         assert_eq!(seq_ast.len(), 2);
         assert_src_eq!(seq_ast[0], SourceRef((1, 25), (1, 29)));
         assert_src_eq!(seq_ast[1], SourceRef((1, 31), (1, 32)));
+    }
+
+    #[test]
+    fn assign_var() {
+        let _ = pretty_env_logger::init();
+
+        let ast = Parser::parse_str(&vec![
+            "var abc",
+            "var bcd"].join("\n")
+        ).unwrap();
+
+        let (ast, next) = expect_line_pair!(ast);
+
+        // `var abc`
+        let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((1, 1), (1, 8)));
+        let ast = *expect_ast!(ast = Ast::Assign(_, ast, ..), src = SourceRef((1, 1), (1, 8)));
+        expect_ast!(ast = Ast::Num(ast, ..), src = SourceRef((1, 1), (1, 8)));
+
+        // `var bcd`
+        let ast = *expect_ast!(next = Ast::Line(0, next, ..), src = SourceRef((2, 1), (2, 8)));
+        let ast = *expect_ast!(ast = Ast::Assign(_, ast, ..), src = SourceRef((2, 1), (2, 8)));
+        expect_ast!(ast = Ast::Num(ast, ..), src = SourceRef((2, 1), (2, 8)));
     }
 
     #[test]
