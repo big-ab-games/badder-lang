@@ -706,10 +706,6 @@ impl Interpreter {
     }
 }
 
-pub fn eval(code: &str) -> Res<Int> {
-    Interpreter::new().interpret(Parser::parse_str(code)?)
-}
-
 
 #[cfg(test)]
 #[macro_use]

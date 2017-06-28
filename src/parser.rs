@@ -170,27 +170,27 @@ impl Ast {
     pub fn src(&self) -> SourceRef {
         use Ast::*;
         match *self {
-            Num(.., src) => src,
-            BinOp(.., src) => src,
-            LeftUnaryOp(.., src) => src,
-            Assign(.., src) => src,
-            Reassign(.., src) => src,
-            Refer(.., src) => src,
-            If(.., src) => src,
-            While(.., src) => src,
-            ForIn(.., src) => src,
-            LoopNav(.., src) => src,
-            AssignFun(.., src) => src,
-            Return(.., src) => src,
-            Call(.., src) => src,
-            Seq(.., src) => src,
-            AssignSeq(.., src) => src,
-            ReferSeq(.., src) => src,
-            ReferSeqIndex(.., src) => src,
-            ReassignSeqIndex(.., src) => src,
-            Line(.., src) => src,
-            LinePair(.., src) => src,
-            Empty(.., src) => src,
+            Num(.., src) |
+            BinOp(.., src) |
+            LeftUnaryOp(.., src) |
+            Assign(.., src) |
+            Reassign(.., src) |
+            Refer(.., src) |
+            If(.., src) |
+            While(.., src) |
+            ForIn(.., src) |
+            LoopNav(.., src) |
+            AssignFun(.., src) |
+            Return(.., src) |
+            Call(.., src) |
+            Seq(.., src) |
+            AssignSeq(.., src) |
+            ReferSeq(.., src) |
+            ReferSeqIndex(.., src) |
+            ReassignSeqIndex(.., src) |
+            Line(.., src) |
+            LinePair(.., src) |
+            Empty(.., src) => src
         }
     }
 }
@@ -785,7 +785,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse(&mut self) -> Res<Ast> {
         let lines = self.lines_while(|_| true)?;
-        Ok(lines.unwrap_or(Ast::Empty(self.current_src_ref)))
+        Ok(lines.unwrap_or_else(|| Ast::Empty(self.current_src_ref)))
     }
 }
 
@@ -941,7 +941,7 @@ mod parser_test {
         // `else`
         let ast = next.expect("else");
         let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((6, 1), (6, 5)));
-        let (expr, block, next) = expect_if_ast!(ast, src = SourceRef((6, 1), (6, 5)));
+        let (_, _, next) = expect_if_ast!(ast, src = SourceRef((6, 1), (6, 5)));
         assert_eq!(next, None);
     }
 

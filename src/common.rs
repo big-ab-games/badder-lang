@@ -1,7 +1,7 @@
 use std::fmt;
 
-/// SourceRef(line, character_start, character_end)
-/// inclusive character_start, exclusive character_end
+/// `SourceRef`(`line`, `character_start`, `character_end`)
+/// inclusive `character_start`, exclusive `character_end`
 #[derive(Clone, Copy, PartialEq)]
 pub struct SourceRef(pub (usize, usize), pub (usize, usize));
 
