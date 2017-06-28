@@ -1,7 +1,7 @@
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 extern crate string_cache;
 
+mod common;
 mod lexer;
 mod parser;
 
@@ -17,8 +17,8 @@ use std::iter::Iterator;
 use std::mem;
 use std::sync::Arc;
 use std::usize;
+use common::*;
 
-pub type Res<T> = Result<T, String>;
 pub type Int = i32;
 
 const MAX_STACK: usize = 50;
@@ -83,7 +83,7 @@ impl FrameData {
 
 #[derive(Debug)]
 enum InterpreterUpFlow {
-    Error(String),
+    Error(BadderError),
     LoopBreak,
     LoopContinue,
     FunReturn(Int),
@@ -136,7 +136,8 @@ fn bool_to_num(b: bool) -> Int {
 }
 
 fn interprerror<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
-    Err(Error(desc.into()))
+    // TODO
+    Err(Error(BadderError::at( SourceRef((0,0),(0,0)) ).describe(desc.into())))
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
@@ -348,7 +349,7 @@ impl Interpreter {
             for i in 0..args.len() {
                 let data = match args[i] {
                     ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?),
-                    Ast::ReferSeq(ref id) => {
+                    Ast::ReferSeq(ref id, ..) => {
                         if let Some(idx) = highest_frame_idx!(id) {
                             Ref(idx, id.clone())
                         }
@@ -469,21 +470,21 @@ impl Interpreter {
         self.log_eval(ast, current_scope, stack_key);
 
         match *ast {
-            Ast::Num(Num(x)) => Ok(x),
-            Ast::BinOp(ref token, ref left, ref right) => {
+            Ast::Num(Num(x), ..) => Ok(x),
+            Ast::BinOp(ref token, ref left, ref right, ..) => {
                 self.eval_bin_op(token, left, right, current_scope, stack_key)
             },
-            Ast::LeftUnaryOp(Sub, ref val) => Ok(-eval!(val)?),
-            Ast::LeftUnaryOp(Not, ref val) => Ok(match eval!(val)? {
+            Ast::LeftUnaryOp(Sub, ref val, ..) => Ok(-eval!(val)?),
+            Ast::LeftUnaryOp(Not, ref val, ..) => Ok(match eval!(val)? {
                 0 => 1,
                 _ => 0,
             }),
-            Ast::Assign(ref id, ref expr) => {
+            Ast::Assign(ref id, ref expr, ..) => {
                 let v = eval!(expr)?;
                 self.stack[current_scope].insert(id.clone(), Value(v));
                 Ok(v)
             },
-            Ast::Reassign(ref id, ref expr) => {
+            Ast::Reassign(ref id, ref expr, ..) => {
                 // reassign to any parent scope
                 if let Some(idx) = highest_frame_idx!(id) {
                     let v = eval!(expr)?;
@@ -495,7 +496,7 @@ impl Interpreter {
                         self.unknown_id_err(id, stack_key), id))
                 }
             },
-            Ast::Refer(ref id) => {
+            Ast::Refer(ref id, ..) => {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
                         Value(v) => Ok(v),
@@ -507,7 +508,7 @@ impl Interpreter {
                 }
                 else { interprerror(self.unknown_id_err(id, stack_key)) }
             },
-            Ast::If(ref expr, ref block, ref else_line, _) => Ok(match eval!(expr)? {
+            Ast::If(ref expr, ref block, ref else_line, ..) => Ok(match eval!(expr)? {
                 0 => {
                     match *else_line {
                         Some(ref else_line) => eval!(else_line)?,
@@ -521,13 +522,13 @@ impl Interpreter {
                     0
                 },
             }),
-            Ast::While(ref expr, ref block) => {
+            Ast::While(ref expr, ref block, ..) => {
                 self.eval_while(expr, block, current_scope, stack_key)
             },
-            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block) => {
+            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, ..) => {
                 self.eval_for_in(idx_id, item_id, list_expr, block, current_scope, stack_key)
             },
-            Ast::LoopNav(ref token) => {
+            Ast::LoopNav(ref token, ..) => {
                 let loop_token = Id("#loop".into());
                 if highest_frame_idx!(&loop_token).is_some() {
                     match *token {
@@ -540,7 +541,7 @@ impl Interpreter {
                     interprerror(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
                 }
             },
-            Ast::AssignFun(ref id, ref args, ref block) => {
+            Ast::AssignFun(ref id, ref args, ref block, ..) => {
                 let top = self.stack.len() - 1;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Callable(..)) => (), // overwrite
@@ -552,17 +553,17 @@ impl Interpreter {
                 self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
                 Ok(0)
             },
-            Ast::Call(ref id, ref args) => {
+            Ast::Call(ref id, ref args, ..) => {
                 self.eval_fun_call(id, args, current_scope, stack_key)
             },
-            Ast::Return(ref expr) => Err(FunReturn(eval!(expr)?)),
-            Ast::ReferSeqIndex(ref seq_id, ref index_expr) => {
+            Ast::Return(ref expr, ..) => Err(FunReturn(eval!(expr)?)),
+            Ast::ReferSeqIndex(ref seq_id, ref index_expr, ..) => {
                 self.eval_refer_seq_index(seq_id, index_expr, current_scope, stack_key)
             },
-            Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr) => {
+            Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr, ..) => {
                 self.eval_reassign_seq_index(seq_id, index_expr, expr, current_scope, stack_key)
             },
-            Ast::AssignSeq(ref id, ref list) => {
+            Ast::AssignSeq(ref id, ref list, ..) => {
                 let v = eval_seq!(list)?;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Sequence(..)) => (), // overwrite
@@ -574,7 +575,7 @@ impl Interpreter {
                 self.stack[current_scope].insert(id.clone(), Sequence(v));
                 Ok(0)
             },
-            Ast::Line(scope, ref expr) => {
+            Ast::Line(scope, ref expr, ..) => {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
                     return interprerror("stack overflow");
@@ -588,16 +589,16 @@ impl Interpreter {
                 }
                 self.eval(expr, scope, stack_key)
             },
-            Ast::LinePair(ref line, ref next_line) => {
+            Ast::LinePair(ref line, ref next_line, ..) => {
                 eval!(line)?;
                 let mut next = next_line;
-                while let Ast::LinePair(ref l2, ref l3) = **next {
+                while let Ast::LinePair(ref l2, ref l3, ..) = **next {
                     eval!(l2)?;
                     next = l3;
                 }
                 eval!(next)
             },
-            Ast::Empty => Ok(0),
+            Ast::Empty(..) => Ok(0),
             _ => panic!("Interpreter: Unexpected syntax {:?}", ast),
         }
     }
@@ -608,14 +609,14 @@ impl Interpreter {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
         match *list {
-            Ast::Seq(ref exprs) => {
+            Ast::Seq(ref exprs, ..) => {
                 let mut evals = vec![];
                 for ex in exprs {
                     evals.push(eval!(ex)?);
                 }
                 Ok(evals)
             }
-            Ast::ReferSeq(ref id) => {
+            Ast::ReferSeq(ref id, ..) => {
                 if let Some(idx) = self.highest_frame_idx(id, current_scope, stack_key) {
                     let (mut idx, mut id) = (idx, id.clone());
                     while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
@@ -647,7 +648,7 @@ impl Interpreter {
 
         // all builtins are core lib for seq, ie first arg is a seq
         match args[0] {
-            Ast::ReferSeq(ref id) => {
+            Ast::ReferSeq(ref id, ..) => {
                 if let Some(idx) = self.highest_frame_idx(id, current_scope, stack_key) {
                     let (mut idx, mut id) = (idx, id.clone());
                     while let Ref(n_idx, ref n_id) = self.stack[idx][&id] {
@@ -740,7 +741,8 @@ mod util {
                 _ => thread::sleep(Duration::from_millis(5)),
             }
         }
-        Err(format!("Program did not return within {:?}", timeout))
+        Err(BadderError::at(SourceRef((0, 0),(0, 0))) // TODO
+            .describe(format!("Program did not return within {:?}", timeout)))
     }
 
     fn print_program_debug(code: &str) -> Res<()> {
@@ -767,7 +769,7 @@ mod util {
         }
         assert!(out.is_err(), format!("Unexpected {:?}", out));
         if let Err(reason) = out {
-            return reason;
+            return format!("{:?}", reason);
         }
         unreachable!();
     }

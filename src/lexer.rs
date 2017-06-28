@@ -1,8 +1,9 @@
-use super::{Int, Res};
+use super::Int;
 use std::fmt;
 use std::iter::Peekable;
 use std::str::Chars;
 use string_cache::DefaultAtom as Atom;
+use common::*;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub enum Token {
@@ -227,8 +228,8 @@ impl<'a> Lexer<'a> {
         self.current_char
     }
 
-    pub fn cursor_debug(&self) -> String {
-        format!("{}:{}", self.line_num, self.char_num)
+    fn cursor(&self) -> SourceRef {
+        SourceRef((self.line_num, self.char_num), (self.line_num, self.char_num+1))
     }
 
     /// Attempts to return next token without advancing, has limitations
@@ -292,22 +293,24 @@ impl<'a> Lexer<'a> {
                 return Ok(token);
             }
 
-            return Err(format!("Lexer: {} Unexpected char: `{}`", self.cursor_debug(), c));
+            return Err(BadderError::at(self.cursor())
+                .describe(format!("Lexer: Unexpected char: `{}`", c)));
         }
 
         Ok(Eof)
     }
 
-    pub fn next_token(&mut self) -> Res<Token> {
+    pub fn next_token(&mut self) -> Res<(Token, SourceRef)> {
         let peek = self.peek()?;
+        let src_ref = self.cursor();
 
         if peek == Eof {
-            return Ok(peek);
+            return Ok((peek, src_ref));
         }
 
         if peek == Eol {
             self.next_char();
-            return Ok(peek);
+            return Ok((peek, src_ref));
         }
 
         if let Indent(_) = peek {
@@ -334,12 +337,10 @@ impl<'a> Lexer<'a> {
                     self.next_char();
                 }
 
-                return Err(format!(
-                    "Lexer: {} Invalid indent must be multiple of 4 spaces",
-                    self.cursor_debug()
-                ));
+                return Err(BadderError::at(src_ref.up_to(self.cursor()))
+                    .describe("Lexer: Invalid indent must be multiple of 4 spaces"));
             }
-            return Ok(Indent(spaces / 4));
+            return Ok((Indent(spaces / 4), src_ref.up_to(self.cursor())));
         }
 
         let c = self.current_char.unwrap();
@@ -354,11 +355,11 @@ impl<'a> Lexer<'a> {
                     break;
                 }
             }
+            let src_ref = src_ref.up_to(self.cursor());
             return match number_str.parse() {
-                Ok(n) => Ok(Num(n)),
-                Err(e) => Err(format!("Lexer: {} could not parse number: {}",
-                                      self.cursor_debug(),
-                                      e)),
+                Ok(n) => Ok((Num(n), src_ref)),
+                Err(e) => Err(BadderError::at(src_ref)
+                    .describe(format!("Lexer: could not parse number: {}", e))),
             };
         }
 
@@ -373,7 +374,7 @@ impl<'a> Lexer<'a> {
                     break;
                 }
             }
-            return Ok(Token::parse_id(id));
+            return Ok((Token::parse_id(id), src_ref.up_to(self.cursor())));
         }
 
         self.next_char();
@@ -384,6 +385,33 @@ impl<'a> Lexer<'a> {
             self.next_char();
         }
 
-        Ok(peek)
+        Ok((peek, src_ref.up_to(self.cursor())))
+    }
+}
+
+#[cfg(test)]
+mod lexer_test {
+    use super::*;
+
+    #[test]
+    fn next_token_src_ref() {
+        let mut lexer = Lexer::new("        seq some_id[] = 1345, 2");
+
+        for (exp_token, exp_src_ref) in vec![
+            (Indent(2), SourceRef((1, 1), (1, 9))),
+            (Seq, SourceRef((1, 9), (1, 12))),
+            (Id("some_id".into()), SourceRef((1, 13), (1, 20))),
+            (Square, SourceRef((1, 20), (1, 22))),
+            (Ass, SourceRef((1, 23), (1, 24))),
+            (Num(1345), SourceRef((1, 25), (1, 29))),
+            (Comma, SourceRef((1, 29), (1, 30))),
+            (Num(2), SourceRef((1, 31), (1, 32))),
+            (Eof, SourceRef((1, 32), (1, 33))),
+        ]{
+            let (token, src_ref) = lexer.next_token().unwrap();
+            println!("Token `{:?}`", token);
+            assert_eq!(token, exp_token);
+            assert_eq!(src_ref, exp_src_ref);
+        }
     }
 }
