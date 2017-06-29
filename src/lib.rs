@@ -497,7 +497,7 @@ impl<O: Overseer> Interpreter<O> {
 
         self.log_eval(ast, current_scope, stack_key);
 
-        if let Err(_) = self.overseer.oversee(&self.stack, ast, current_scope, stack_key) {
+        if self.overseer.oversee(&self.stack, ast, current_scope, stack_key).is_err() {
             return Err(Error(BadderError::at(ast.src()).describe("cancelled")));
         }
 

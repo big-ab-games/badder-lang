@@ -39,7 +39,7 @@ impl ControllerOverseer {
     fn replace_last_stack(&mut self, stack: &[HashMap<Token, FrameData>])
         -> Arc<Vec<HashMap<Token, FrameData>>>
     {
-        let last: Arc<Vec<_>> = Arc::new(stack.clone().into());
+        let last: Arc<Vec<_>> = Arc::new(stack.into());
         self.last_stack_copy = Some(last.clone());
         last
     }
@@ -56,7 +56,7 @@ impl Overseer for ControllerOverseer {
         }
 
         let id = self.next_id;
-        let send = Instant::now();
+        let send_time = Instant::now();
         self.next_id += 1;
 
         let stack = { // kerfuffle to avoid cloning the stack when it hasn't changed
@@ -74,7 +74,7 @@ impl Overseer for ControllerOverseer {
         self.to_controller.send(Phase {
             id,
             src: ast.src(),
-            time: send.clone(),
+            time: send_time,
             stack: stack,
         }).expect("send");
 
@@ -94,14 +94,14 @@ impl Overseer for ControllerOverseer {
         }
 
         let pause_time = *self.pause_time.latest();
-        if send.elapsed() >= pause_time {
+        if send_time.elapsed() >= pause_time {
             Ok(())
         }
         else {
             // block until result received
             debug!("ControllerOverseer waiting: {:?} {:?}", ast.src(), ast);
 
-            let mut elapsed = send.elapsed();
+            let mut elapsed = send_time.elapsed();
             while elapsed < pause_time {
                 match self.from_controller.recv_timeout(pause_time - elapsed) {
                     Ok(Ok(i)) => if i == id {
@@ -114,7 +114,7 @@ impl Overseer for ControllerOverseer {
                     _ => (),
                 };
 
-                elapsed = send.elapsed();
+                elapsed = send_time.elapsed();
             }
             Ok(())
         }
@@ -150,7 +150,7 @@ impl Controller {
     pub fn set_unpause_after(&mut self, pause_time: Duration) {
         self.pause_time = pause_time;
         // ignore errors to allow setting pause_time before execution
-        let _ = self.set_overseer.update(self.pause_time.clone());
+        let _ = self.set_overseer.update(self.pause_time);
     }
 
     /// Unblocks current waiting phase's execution, if it is blocked.
@@ -182,7 +182,7 @@ impl Controller {
     /// Returns current execution is paused, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn paused(&self) -> bool {
-        if let Some(Phase { id: _, time, .. }) = self.current_phase {
+        if let Some(Phase { time, .. }) = self.current_phase {
             time.elapsed() < self.pause_time
         }
         else { false }
