@@ -13,7 +13,7 @@ pub struct Phase {
     pub stack: Arc<Vec<HashMap<Token, FrameData>>>,
 }
 
-pub struct ControllerOverseer {
+struct ControllerOverseer {
     next_id: u64,
     pause_time: single_value_channel::Receiver<Duration>,
     to_controller: mpsc::Sender<Phase>,
@@ -121,6 +121,7 @@ impl Overseer for ControllerOverseer {
     }
 }
 
+#[derive(Debug)]
 pub struct Controller {
     pause_time: Duration,
     current_phase: Option<Phase>,
@@ -131,19 +132,27 @@ pub struct Controller {
     set_overseer: single_value_channel::Updater<Duration>,
 }
 
-pub fn controller() -> Controller {
-    Controller {
-        pause_time: Duration::from_secs(0),
-        current_phase: None,
-        result: None,
-        from_overseer: mpsc::channel().1,
-        from_interpreter: mpsc::channel().1,
-        to_overseer: mpsc::channel().0,
-        set_overseer: single_value_channel::channel_starting_with(Duration::from_secs(0)).1,
-    }
-}
-
 impl Controller {
+    pub fn new(pause: Duration) -> Controller {
+        Controller {
+            pause_time: pause,
+            current_phase: None,
+            result: None,
+            from_overseer: mpsc::channel().1,
+            from_interpreter: mpsc::channel().1,
+            to_overseer: mpsc::channel().0,
+            set_overseer: single_value_channel::channel_starting_with(Duration::from_secs(0)).1,
+        }
+    }
+
+    pub fn new_no_pause() -> Controller {
+        Controller::new(Duration::from_secs(0))
+    }
+
+    pub fn new_max_pause() -> Controller {
+        Controller::new(Duration::from_secs(::std::u64::MAX))
+    }
+
     /// Modifies the pause time, the duration the interpreter will block for
     /// before non-trivial AST interpretation waiting for a #unpause() or #cancel() call
     /// after the duration execution will continue automatically
@@ -190,19 +199,23 @@ impl Controller {
 
     /// Communicate with the current execution
     /// populates #result & #current_phase if available
-    pub fn refresh(&mut self) {
+    /// Returns if a change has taken place
+    pub fn refresh(&mut self) -> bool {
         if self.result.is_some() {
-            return;
+            return false;
         }
 
         if let Ok(result) = self.from_interpreter.try_recv() {
             self.result = Some(result);
-            return;
+            return true;
         }
 
+        let mut change = false;
         while let Ok(phase) = self.from_overseer.try_recv() {
             self.current_phase = Some(phase);
+            change = true;
         }
+        change
     }
 
     /// Start executing code with a new thread.
@@ -217,6 +230,8 @@ impl Controller {
         self.from_overseer = from_overseer;
         self.from_interpreter = from_interpreter;
         self.set_overseer = set_pause;
+        self.result = None;
+        self.current_phase = None;
 
         thread::spawn(move|| {
             let overseer = ControllerOverseer {

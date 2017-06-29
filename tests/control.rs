@@ -4,7 +4,6 @@ extern crate pretty_env_logger;
 
 use badder_lang::*;
 use badder_lang::controller::*;
-use std::u64;
 use std::time::*;
 
 macro_rules! await_next_pause {
@@ -41,9 +40,7 @@ fn controller_step_test() {
 
     let ast = Parser::parse_str(SRC).expect("parse");
 
-    let mut con = controller();
-    con.set_unpause_after(Duration::from_secs(u64::MAX));
-
+    let mut con = Controller::new_max_pause();
     con.execute(ast);
     // `var loops`
     assert_eq!(await_next_pause!(con).src, SourceRef((2,1), (2,10)));
@@ -105,9 +102,7 @@ fn phase_stack() {
 
     let ast = Parser::parse_str(STACK_SRC).expect("parse");
 
-    let mut con = controller();
-    con.set_unpause_after(Duration::from_secs(u64::MAX));
-
+    let mut con = Controller::new_max_pause();
     con.execute(ast);
     // 1: [{}]
     await_next_pause!(con);
