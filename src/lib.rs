@@ -1,5 +1,6 @@
 #[macro_use] extern crate log;
 extern crate string_cache;
+extern crate single_value_channel;
 
 mod common;
 mod lexer;
@@ -7,7 +8,6 @@ mod parser;
 pub mod controller;
 
 use lexer::Token::*;
-use parser::*;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -27,14 +27,14 @@ pub type Int = i32;
 const MAX_STACK: usize = 50;
 const UNKNOWN_SRC_REF: SourceRef = SourceRef((0,0), (0,0));
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum Builtin {
     Size,
     SeqAdd,
     SeqRemove,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq)]
 pub enum FrameData {
     Value(Int),
     /// Callable(args, block)
@@ -131,7 +131,7 @@ use FrameData::*;
 use InterpreterUpFlow::*;
 
 pub trait Overseer {
-    fn oversee(&self,
+    fn oversee(&mut self,
                stack: &[HashMap<Token, FrameData>],
                ast: &Ast,
                current_scope: usize,
@@ -141,7 +141,7 @@ pub trait Overseer {
 pub struct NoOverseer;
 
 impl Overseer for NoOverseer {
-    fn oversee(&self,
+    fn oversee(&mut self,
                _: &[HashMap<Token, FrameData>],
                _: &Ast,
                _: usize,

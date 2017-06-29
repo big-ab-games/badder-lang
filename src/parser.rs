@@ -8,7 +8,7 @@ use string_cache::DefaultAtom as Atom;
 use common::*;
 
 /// Abstract syntax tree
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Hash)]
 pub enum Ast {
     Num(Token, SourceRef),
     BinOp(Token, Box<Ast>, Box<Ast>, SourceRef),
