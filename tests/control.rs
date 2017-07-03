@@ -82,7 +82,7 @@ macro_rules! assert_stack {
                 println!("Actual stack {:?}", stack);
                 assert!(stack.len() > index, "Stack smaller than expected");
             }
-            assert_matches!(stack[index].get(&id), Some(&FrameData::Value($int)));
+            assert_eq!(stack[index].get(&id), Some(&FrameData::Value($int)));
         )*
     }};
 }
@@ -125,4 +125,56 @@ fn phase_stack() {
         con.refresh();
     }
     assert_matches!(con.result(), Some(&Ok(31)));
+}
+
+const EXTERNAL_FUN_SRC: &str = "\
+# expect an external function `external_sum(nn)`
+var a = 12
+fun plus_one(n)
+    n + 1
+
+var a123 = external_sum(123, a)
+
+a.plus_one().external_sum(a123)
+";
+
+#[test]
+fn external_functions_num_args() {
+    let _ = pretty_env_logger::init();
+    let start = Instant::now();
+
+    let ast = Parser::parse_str(EXTERNAL_FUN_SRC).expect("parse");
+
+    let mut con = Controller::new_no_pause();
+    con.add_external_function("external_sum(nn)");
+    con.execute(ast);
+
+    loop { // call 1
+        if let Some(call) = con.current_external_call() {
+            assert_eq!(call.id, Token::Id("external_sum(nn)".into()));
+            assert_eq!(call.args, vec![123, 12]);
+            con.answer_external_call(Ok(135));
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        con.refresh();
+        assert_matches!(con.result(), None);
+    }
+
+    loop { // call 2
+        if let Some(call) = con.current_external_call() {
+            assert_eq!(call.id, Token::Id("external_sum(nn)".into()));
+            assert_eq!(call.args, vec![13, 135]);
+            con.answer_external_call(Ok(-123)); // can be anything, obvs
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        con.refresh();
+        assert_matches!(con.result(), None);
+    }
+
+    while con.result().is_none() && start.elapsed() < Duration::from_secs(2) {
+        con.refresh();
+    }
+    assert_matches!(con.result(), Some(&Ok(-123)));
 }

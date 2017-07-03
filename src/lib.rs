@@ -39,7 +39,10 @@ pub enum FrameData {
     Value(Int),
     /// Callable(args, block)
     Callable(Vec<Token>, Arc<Ast>),
+    /// Callables built into the interpreter
     BuiltinCallable(Builtin),
+    /// External function managed by the overseer
+    ExternalCallable,
     ///Ref(frame_index, id)
     Ref(usize, Token),
     /// Sequence of values
@@ -54,6 +57,7 @@ impl fmt::Debug for FrameData {
             Value(x) => write!(f, "Value({})", x),
             Callable(..) => write!(f, "Callable"),
             BuiltinCallable(..) => write!(f, "BuiltinCallable"),
+            ExternalCallable => write!(f, "ExternalCallable"),
             Sequence(ref vals) => write!(f, "Sequence({:?})", vals),
             Ref(i, ref t) => write!(f, "Ref([{}]:{:?})", i, t),
             LoopMarker => write!(f, "LoopMarker"),
@@ -136,17 +140,29 @@ pub trait Overseer {
                ast: &Ast,
                current_scope: usize,
                stack_key: StackKey) -> Result<(), ()>;
+
+    fn external_function_signatures(&self) -> &[Token];
+
+    fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String>;
 }
 
 pub struct NoOverseer;
 
 impl Overseer for NoOverseer {
     fn oversee(&mut self,
-               _: &[HashMap<Token, FrameData>],
+               _stack: &[HashMap<Token, FrameData>],
                _: &Ast,
                _: usize,
                _: StackKey) -> Result<(), ()> {
         Ok(())
+    }
+
+    fn external_function_signatures(&self) -> &[Token] {
+        &[]
+    }
+
+    fn call_external_function(&mut self, id: Token, _: Vec<Int>) -> Result<Int, String> {
+        Err(format!("Unknown external function {:?}", id))
     }
 }
 
@@ -178,6 +194,9 @@ impl Default for Interpreter<NoOverseer> {
 impl<O: Overseer> Interpreter<O> {
     pub fn new(overseer: O) -> Interpreter<O> {
         let mut init_frame = HashMap::new();
+        for ext_fun in overseer.external_function_signatures() {
+            init_frame.insert(ext_fun.clone(), FrameData::ExternalCallable);
+        }
         FrameData::add_builtins_to(&mut init_frame);
         Interpreter {
             stack: vec![init_frame],
@@ -358,6 +377,14 @@ impl<O: Overseer> Interpreter<O> {
             }
             if let Some(builtin) = builtin_callable {
                 return self.call_builtin(builtin, args, current_scope, stack_key);
+            }
+
+            if self.stack[idx][id] == ExternalCallable {
+                let mut evaluated_args = vec![];
+                for arg in args {
+                    evaluated_args.push(eval!(arg)?);
+                }
+                return self.call_external(id.clone(), evaluated_args);
             }
 
             let (mut arg_ids, callable_block) = {
@@ -755,6 +782,14 @@ impl<O: Overseer> Interpreter<O> {
                     }
                 }
             },
+        }
+    }
+
+    /// Note: currently external functions assume num only arguments
+    fn call_external(&mut self, id: Token, args: Vec<Int>) -> Result<Int, InterpreterUpFlow> {
+        match self.overseer.call_external_function(id, args) {
+            Ok(result) => Ok(result),
+            Err(desc) => parent_error(desc),
         }
     }
 

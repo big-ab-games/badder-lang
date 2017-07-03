@@ -18,6 +18,9 @@ struct ControllerOverseer {
     pause_time: single_value_channel::Receiver<Duration>,
     to_controller: mpsc::Sender<Phase>,
     from_controller: mpsc::Receiver<Result<u64, ()>>,
+    external_function_ids: Vec<Token>,
+    external_function_call: mpsc::Sender<ExternalCall>,
+    external_function_answer: mpsc::Receiver<Result<Int, String>>,
     last_stack_copy: Option<Arc<Vec<HashMap<Token, FrameData>>>>,
 }
 
@@ -119,6 +122,27 @@ impl Overseer for ControllerOverseer {
             Ok(())
         }
     }
+
+    fn external_function_signatures(&self) -> &[Token] {
+        &self.external_function_ids
+    }
+
+    fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String> {
+        debug!("ControllerOverseer awaiting answer: {:?}, args {:?}", id, args);
+        self.external_function_call.send(ExternalCall {
+            id: id,
+            args: args,
+        }).expect("send");
+
+        // block until answer received
+        match self.external_function_answer.recv() {
+            Ok(result) => result,
+            Err(err) => {
+                debug!("ControllerOverseer cancelling: {:?}", err);
+                return Err("cancelled".into())
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -126,10 +150,15 @@ pub struct Controller {
     pause_time: Duration,
     current_phase: Option<Phase>,
     result: Option<Res<Int>>,
+    current_external_call: Option<ExternalCall>,
+    external_function_ids: Vec<Token>,
+
     from_overseer: mpsc::Receiver<Phase>,
-    from_interpreter: mpsc::Receiver<Res<Int>>,
+    execution_result: mpsc::Receiver<Res<Int>>,
     to_overseer: mpsc::Sender<Result<u64, ()>>,
-    set_overseer: single_value_channel::Updater<Duration>,
+    overseer_pause: single_value_channel::Updater<Duration>,
+    external_function_call: mpsc::Receiver<ExternalCall>,
+    external_function_answer: mpsc::Sender<Result<Int, String>>,
 }
 
 impl Controller {
@@ -138,10 +167,14 @@ impl Controller {
             pause_time: pause,
             current_phase: None,
             result: None,
+            current_external_call: None,
+            external_function_ids: Vec::new(),
             from_overseer: mpsc::channel().1,
-            from_interpreter: mpsc::channel().1,
+            execution_result: mpsc::channel().1,
             to_overseer: mpsc::channel().0,
-            set_overseer: single_value_channel::channel_starting_with(Duration::from_secs(0)).1,
+            overseer_pause: single_value_channel::channel_starting_with(Duration::from_secs(0)).1,
+            external_function_answer: mpsc::channel().0,
+            external_function_call: mpsc::channel().1,
         }
     }
 
@@ -159,7 +192,7 @@ impl Controller {
     pub fn set_unpause_after(&mut self, pause_time: Duration) {
         self.pause_time = pause_time;
         // ignore errors to allow setting pause_time before execution
-        let _ = self.set_overseer.update(self.pause_time);
+        let _ = self.overseer_pause.update(self.pause_time);
     }
 
     /// Unblocks current waiting phase's execution, if it is blocked.
@@ -205,7 +238,7 @@ impl Controller {
             return false;
         }
 
-        if let Ok(result) = self.from_interpreter.try_recv() {
+        if let Ok(result) = self.execution_result.try_recv() {
             self.result = Some(result);
             return true;
         }
@@ -215,7 +248,26 @@ impl Controller {
             self.current_phase = Some(phase);
             change = true;
         }
+
+        if let Ok(call) = self.external_function_call.try_recv() {
+            self.current_external_call = Some(call);
+            change = true;
+        }
+
         change
+    }
+
+    pub fn add_external_function(&mut self, id: &str) {
+        self.external_function_ids.push(Token::Id(id.into()));
+    }
+
+    pub fn current_external_call(&self) -> Option<ExternalCall> {
+        self.current_external_call.clone()
+    }
+
+    pub fn answer_external_call(&mut self, result: Result<Int, String>) {
+        self.current_external_call = None;
+        self.external_function_answer.send(result).expect("external_function_answer.send");
     }
 
     /// Start executing code with a new thread.
@@ -223,15 +275,22 @@ impl Controller {
     pub fn execute(&mut self, code: Ast) {
         let (to_controller, from_overseer) = mpsc::channel();
         let (to_overseer, from_controller) = mpsc::channel();
-        let (final_result, from_interpreter) = mpsc::channel();
+        let (final_result, execution_result) = mpsc::channel();
         let (get_pause, set_pause) = single_value_channel::channel_starting_with(self.pause_time);
+        let (send_fun_call, recv_fun_call) = mpsc::channel();
+        let (send_fun_answer, recv_fun_answer) = mpsc::channel();
 
         self.to_overseer = to_overseer;
         self.from_overseer = from_overseer;
-        self.from_interpreter = from_interpreter;
-        self.set_overseer = set_pause;
+        self.execution_result = execution_result;
+        self.overseer_pause = set_pause;
+        self.external_function_call = recv_fun_call;
+        self.external_function_answer = send_fun_answer;
         self.result = None;
         self.current_phase = None;
+        self.current_external_call = None;
+
+        let external_function_ids = self.external_function_ids.clone();
 
         thread::spawn(move|| {
             let overseer = ControllerOverseer {
@@ -239,9 +298,18 @@ impl Controller {
                 pause_time: get_pause,
                 to_controller,
                 from_controller,
+                external_function_ids,
+                external_function_call: send_fun_call,
+                external_function_answer: recv_fun_answer,
                 last_stack_copy: None,
             };
             let _ = final_result.send(Interpreter::new(overseer).evaluate(&code));
         });
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ExternalCall {
+    pub id: Token,
+    pub args: Vec<Int>,
 }
