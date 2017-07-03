@@ -240,6 +240,7 @@ impl Controller {
 
         if let Ok(result) = self.execution_result.try_recv() {
             self.result = Some(result);
+            self.current_phase = None;
             return true;
         }
 
