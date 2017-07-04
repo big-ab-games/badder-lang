@@ -139,7 +139,7 @@ impl Overseer for ControllerOverseer {
             Ok(result) => result,
             Err(err) => {
                 debug!("ControllerOverseer cancelling: {:?}", err);
-                return Err("cancelled".into())
+                Err("cancelled".into())
             }
         }
     }
@@ -313,4 +313,13 @@ impl Controller {
 pub struct ExternalCall {
     pub id: Token,
     pub args: Vec<Int>,
+}
+
+impl ExternalCall {
+    pub fn id_str(&self) -> &str {
+        match self.id {
+            Token::Id(ref s) => s,
+            _ => unreachable!(),
+        }
+    }
 }
