@@ -306,12 +306,13 @@ impl<O: Overseer> Interpreter<O> {
         self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
         loop {
             self.stack.push(HashMap::new());
-            match eval!(block) {
+            let eval = self.eval(block, current_scope + 1, stack_key);
+            self.stack.pop();
+            match eval {
                 Err(LoopBreak) => break,
                 Ok(_) | Err(LoopContinue) => (),
-                err @ Err(_) => return err,
+                err @ Err(_) => return err ,
             };
-            self.stack.pop();
             if eval!(expr)? == 0 {
                 break;
             }
@@ -328,7 +329,6 @@ impl<O: Overseer> Interpreter<O> {
                    block: &Ast,
                    current_scope: usize,
                    stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
 
         let mut list = eval_seq!(list_expr)?;
@@ -345,12 +345,13 @@ impl<O: Overseer> Interpreter<O> {
             }
             frame.insert(item_id.clone(), Value(list[index]));
             self.stack.push(frame);
-            match eval!(block) {
+            let eval = self.eval(block, current_scope + 1, stack_key);
+            self.stack.pop();
+            match eval {
                 Err(LoopBreak) => break,
                 Ok(_) | Err(LoopContinue) => (),
-                err @ Err(_) => return err,
+                err @ Err(_) => return err ,
             };
-            self.stack.pop();
             index += 1;
             list = eval_seq!(list_expr)?;
         }
@@ -575,8 +576,9 @@ impl<O: Overseer> Interpreter<O> {
                 },
                 _ => {
                     self.stack.push(HashMap::new());
-                    eval!(block)?;
+                    let eval = self.eval(block, current_scope + 1, stack_key);
                     self.stack.pop();
+                    eval?;
                     0
                 },
             }),
@@ -643,13 +645,6 @@ impl<O: Overseer> Interpreter<O> {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
                     return parent_error("stack overflow");
-                }
-
-                while self.stack.len() < scope + 1 {
-                    self.stack.push(HashMap::new());
-                }
-                while self.stack.len() > scope + 1 {
-                    self.stack.pop();
                 }
                 self.eval(expr, scope, stack_key)
             },
@@ -913,6 +908,25 @@ mod util {
             )+
             assert_eq!(err.src, $src_ref);
         };
+    }
+}
+
+#[cfg(test)]
+mod issues {
+    use super::*;
+
+    #[test]
+    fn variable_in_funtion_loop() {
+        assert_program!("fun some_func()";
+                        "    var count";
+                        "    for i in 1,2,3";
+                        "        count += i";
+                        "    count";
+                        "loop";
+                        "    if 1";
+                        "        some_func()";
+                        "    break";
+                        "1" => 1);
     }
 }
 
@@ -1224,6 +1238,7 @@ mod functions {
 
     #[test]
     fn fib_function() {
+        // 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144
         assert_program!("fun fib(n)";
                         "    if n < 3";
                         "        return 1";
