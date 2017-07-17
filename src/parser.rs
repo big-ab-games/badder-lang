@@ -487,7 +487,7 @@ impl<'a> Parser<'a> {
 
     // loop
     //     line+
-    fn line_loop(&mut self, scope: usize) -> Res<Ast> {
+    fn line_loop(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {
         let src = self.current_src_ref;
         let (while_expr, for_stuff) = {
             if self.consume_maybe(While)?.is_some() {
@@ -510,12 +510,20 @@ impl<'a> Parser<'a> {
             }
         };
         self.consume(Eol)?;
+        let loop_allow = {
+            if allow.contains(&Break) && allow.contains(&Continue) { allow }
+            else {
+                let mut extended = vec![Break, Continue];
+                extended.extend_from_slice(allow.as_slice());
+                extended.into()
+            }
+        };
         let block = self.lines_while_allowing(
             |l| match *l {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
             },
-            vec![Break, Continue].into(),
+            loop_allow,
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
@@ -706,7 +714,7 @@ impl<'a> Parser<'a> {
         // loop
         //     line+
         if [While, Loop, For].contains(&self.current_token) {
-            return self.line_loop(scope);
+            return self.line_loop(scope, allow);
         }
         // fun id()
         //     line+
@@ -1005,5 +1013,26 @@ mod parser_test {
 
         assert!(err.description.contains("double"));
         assert_eq!(err.src, SourceRef((1, 5), (1, 11)));
+    }
+}
+
+// reproductions of encountered issues/bugs
+#[cfg(test)]
+mod issues {
+    extern crate pretty_env_logger;
+
+    use super::*;
+
+    #[test]
+    fn return_in_function_body_with_loops() {
+        let _ = pretty_env_logger::init();
+        Parser::parse_str(&vec![
+            "fun some_func()",
+            "    for i in 1,2,3",
+            "        if i > 4",
+            "            return 234",
+            "    return 123",
+            "some_func()"].join("\n")
+        ).unwrap();
     }
 }
