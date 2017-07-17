@@ -106,6 +106,7 @@ impl Overseer for ControllerOverseer {
 
             let mut elapsed = send_time.elapsed();
             while elapsed < pause_time {
+                // warn!("elapsed {:?}, pause_time {:?}", elapsed, pause_time);
                 match self.from_controller.recv_timeout(pause_time - elapsed) {
                     Ok(Ok(i)) => if i == id {
                         return Ok(());
@@ -183,7 +184,8 @@ impl Controller {
     }
 
     pub fn new_max_pause() -> Controller {
-        Controller::new(Duration::from_secs(::std::u64::MAX))
+        // just a large amount of seconds, for some reason u64::MAX caused issues on windows
+        Controller::new(Duration::from_secs(::std::u32::MAX as u64))
     }
 
     /// Modifies the pause time, the duration the interpreter will block for
