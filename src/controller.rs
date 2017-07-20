@@ -237,7 +237,7 @@ impl Controller {
     /// Unblocks current waiting phase's execution, if it is blocked.
     /// Requires a recent (in terms of set pause_time) call to #refresh() to be valid
     pub fn unpause(&mut self) {
-        if let Some(Phase{ id, .. }) = self.current_phase.take() {
+        if let Some(Phase{ id, .. }) = self.current_phase {
             // ignore errors as send can happen after execution finishes
             let _ = self.to_overseer.send(Ok(id));
         }
