@@ -10,13 +10,37 @@ pub struct Phase {
     pub id: u64,
     pub time: Instant,
     pub src: SourceRef,
+    /// most recent function call ref relavant to this Ast, None => top level code
+    pub called_from: Vec<SourceRef>,
+    kind: PhaseKind,
     pub stack: Arc<Vec<HashMap<Token, FrameData>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhaseKind {
+    FunctionCall,
+    Other,
+}
+
+impl PhaseKind {
+    fn from(ast: &Ast) -> PhaseKind {
+        if let &Ast::Call(..) = ast {
+            PhaseKind::FunctionCall
+        }
+        else { PhaseKind::Other }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum OverseerUpdate {
+    Phase(Phase),
+    FinishedFunCall(Token),
 }
 
 struct ControllerOverseer {
     next_id: u64,
     pause_time: single_value_channel::Receiver<Duration>,
-    to_controller: mpsc::Sender<Phase>,
+    to_controller: mpsc::Sender<OverseerUpdate>,
     from_controller: mpsc::Receiver<Result<u64, ()>>,
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
@@ -74,12 +98,14 @@ impl Overseer for ControllerOverseer {
         };
 
         trace!("ControllerOverseer sending: {:?} {:?}", ast.src(), ast);
-        self.to_controller.send(Phase {
+        self.to_controller.send(OverseerUpdate::Phase(Phase {
             id,
             src: ast.src(),
+            called_from: Vec::new(), // unknown
+            kind: PhaseKind::from(&ast),
             time: send_time,
             stack: stack,
-        }).expect("send");
+        })).expect("send");
 
         let mut recv = self.from_controller.try_recv();
         while recv != Err(TryRecvError::Empty) {
@@ -124,6 +150,15 @@ impl Overseer for ControllerOverseer {
         }
     }
 
+    fn oversee_after(&mut self,
+                     _stack: &[HashMap<Token, FrameData>],
+                     ast: &Ast) {
+        if let Ast::Call(ref id, ..) = *ast {
+            self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()))
+                .expect("send");
+        }
+    }
+
     fn external_function_signatures(&self) -> &[Token] {
         &self.external_function_ids
     }
@@ -150,11 +185,12 @@ impl Overseer for ControllerOverseer {
 pub struct Controller {
     pause_time: Duration,
     current_phase: Option<Phase>,
+    fun_call_history: Vec<SourceRef>,
     result: Option<Res<Int>>,
     current_external_call: Option<ExternalCall>,
     external_function_ids: Vec<Token>,
 
-    from_overseer: mpsc::Receiver<Phase>,
+    from_overseer: mpsc::Receiver<OverseerUpdate>,
     execution_result: mpsc::Receiver<Res<Int>>,
     to_overseer: mpsc::Sender<Result<u64, ()>>,
     overseer_pause: single_value_channel::Updater<Duration>,
@@ -167,6 +203,7 @@ impl Controller {
         Controller {
             pause_time: pause,
             current_phase: None,
+            fun_call_history: Vec::new(),
             result: None,
             current_external_call: None,
             external_function_ids: Vec::new(),
@@ -208,7 +245,8 @@ impl Controller {
 
     /// Requests any current executing interpreter be cancelled
     pub fn cancel(&mut self) {
-        let _ = self.current_phase.take();
+        self.current_phase = None;
+        self.fun_call_history.clear();
         let _ = self.to_overseer.send(Err(()));
     }
 
@@ -247,8 +285,19 @@ impl Controller {
         }
 
         let mut change = false;
-        while let Ok(phase) = self.from_overseer.try_recv() {
-            self.current_phase = Some(phase);
+        while let Ok(update) = self.from_overseer.try_recv() {
+            match update {
+                OverseerUpdate::Phase(mut phase) => {
+                    phase.called_from = self.current_call_info();
+                    if phase.kind == PhaseKind::FunctionCall {
+                        self.fun_call_history.push(phase.src.clone())
+                    }
+                    self.current_phase = Some(phase);
+                },
+                OverseerUpdate::FinishedFunCall(_) => {
+                    self.fun_call_history.pop();
+                }
+            };
             change = true;
         }
 
@@ -258,6 +307,12 @@ impl Controller {
         }
 
         change
+    }
+
+    fn current_call_info(&self) -> Vec<SourceRef> {
+        self.fun_call_history.iter().rev()
+            .map(|x| x.clone())
+            .collect()
     }
 
     pub fn add_external_function(&mut self, id: &str) {
@@ -291,6 +346,7 @@ impl Controller {
         self.external_function_answer = send_fun_answer;
         self.result = None;
         self.current_phase = None;
+        self.fun_call_history.clear();
         self.current_external_call = None;
 
         let external_function_ids = self.external_function_ids.clone();

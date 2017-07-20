@@ -178,3 +178,58 @@ fn external_functions_num_args() {
     }
     assert_matches!(con.result(), Some(&Ok(-123)));
 }
+
+const CALLED_FROM_SRC: &str = "\
+var x
+fun do_a()
+    if x < 2  # -> [7, 8], [7, 4, 7, 8]
+        do_b()  # -> [7, 8]
+fun do_b()
+    x += 1  # -> [8], [4, 7, 8]
+    do_a()  # -> [8], [4, 7, 8]
+do_b()
+";
+
+#[test]
+fn called_from_info() {
+    let _ = pretty_env_logger::init();
+    let ast = Parser::parse_str(CALLED_FROM_SRC).expect("parse");
+
+    macro_rules! assert_called_from_line {
+        ($phase:expr => $lines:expr) => {{
+            let phase = $phase;
+            let simplified_actual: Vec<_> = phase.called_from.iter()
+                .map(|src| (src.0).0)
+                .collect();
+            let lines: Vec<usize> = $lines;
+            if lines != simplified_actual {
+                println!("Unexpected called_from from phase at {:?}", phase.src);
+                assert_eq!(lines, simplified_actual)
+            }
+        }};
+    }
+
+    let mut con = Controller::new_max_pause();
+    con.execute(ast);
+
+    // `var x`, `fun do_a()`, `fun do_b()`, `do_b()`
+    assert_called_from_line!(await_next_pause!(con) => vec![]);
+    assert_called_from_line!(await_next_pause!(con) => vec![]);
+    assert_called_from_line!(await_next_pause!(con) => vec![]);
+    assert_called_from_line!(await_next_pause!(con) => vec![]);
+    // `x = _`, `x + 1`, `do_a()`
+    assert_called_from_line!(await_next_pause!(con) => vec![8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![8]);
+    // `if _`, `x < 2`, `do_b()
+    assert_called_from_line!(await_next_pause!(con) => vec![7, 8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![7, 8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![7, 8]);
+    // `x =`, `x + 1`, `do_a()`
+    assert_called_from_line!(await_next_pause!(con) => vec![4, 7, 8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![4, 7, 8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![4, 7, 8]);
+    // `if _`, `x < 2`
+    assert_called_from_line!(await_next_pause!(con) => vec![7, 4, 7, 8]);
+    assert_called_from_line!(await_next_pause!(con) => vec![7, 4, 7, 8]);
+}

@@ -141,6 +141,10 @@ pub trait Overseer {
                current_scope: usize,
                stack_key: StackKey) -> Result<(), ()>;
 
+    fn oversee_after(&mut self,
+                     _stack: &[HashMap<Token, FrameData>],
+                     _ast: &Ast) {}
+
     fn external_function_signatures(&self) -> &[Token];
 
     fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String>;
@@ -660,6 +664,8 @@ impl<O: Overseer> Interpreter<O> {
             Ast::Empty(..) => Ok(0),
             _ => parent_error(format!("Interpreter: Unexpected syntax {:?}", ast)),
         };
+
+        self.overseer.oversee_after(&self.stack, ast);
 
         match result {
             Err(Error(BadderError{ description, src })) => {
