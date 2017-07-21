@@ -13,6 +13,7 @@ pub struct Phase {
     /// most recent function call ref relavant to this Ast, None => top level code
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
+    unpaused: bool,
     pub stack: Arc<Vec<HashMap<Token, FrameData>>>,
 }
 
@@ -24,7 +25,7 @@ pub enum PhaseKind {
 
 impl PhaseKind {
     fn from(ast: &Ast) -> PhaseKind {
-        if let &Ast::Call(..) = ast {
+        if let Ast::Call(..) = *ast {
             PhaseKind::FunctionCall
         }
         else { PhaseKind::Other }
@@ -102,7 +103,8 @@ impl Overseer for ControllerOverseer {
             id,
             src: ast.src(),
             called_from: Vec::new(), // unknown
-            kind: PhaseKind::from(&ast),
+            kind: PhaseKind::from(ast),
+            unpaused: false,
             time: send_time,
             stack: stack,
         })).expect("send");
@@ -237,9 +239,10 @@ impl Controller {
     /// Unblocks current waiting phase's execution, if it is blocked.
     /// Requires a recent (in terms of set pause_time) call to #refresh() to be valid
     pub fn unpause(&mut self) {
-        if let Some(Phase{ id, .. }) = self.current_phase {
+        if let Some(Phase{ id, unpaused: false, .. }) = self.current_phase {
             // ignore errors as send can happen after execution finishes
             let _ = self.to_overseer.send(Ok(id));
+            self.current_phase.as_mut().unwrap().unpaused = true;
         }
     }
 
@@ -264,8 +267,8 @@ impl Controller {
     /// Returns current execution is paused, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn paused(&self) -> bool {
-        if let Some(Phase { time, .. }) = self.current_phase {
-            time.elapsed() < self.pause_time
+        if let Some(Phase { time, unpaused,  .. }) = self.current_phase {
+            !unpaused && time.elapsed() < self.pause_time
         }
         else { false }
     }
@@ -290,7 +293,7 @@ impl Controller {
                 OverseerUpdate::Phase(mut phase) => {
                     phase.called_from = self.current_call_info();
                     if phase.kind == PhaseKind::FunctionCall {
-                        self.fun_call_history.push(phase.src.clone())
+                        self.fun_call_history.push(phase.src)
                     }
                     self.current_phase = Some(phase);
                 },
@@ -310,9 +313,7 @@ impl Controller {
     }
 
     fn current_call_info(&self) -> Vec<SourceRef> {
-        self.fun_call_history.iter().rev()
-            .map(|x| x.clone())
-            .collect()
+        self.fun_call_history.iter().rev().cloned().collect()
     }
 
     pub fn add_external_function(&mut self, id: &str) {

@@ -11,6 +11,7 @@ macro_rules! await_next_pause {
         $controller.refresh();
         if $controller.paused() {
             $controller.unpause();
+            
         }
 
         let before = Instant::now();
@@ -204,7 +205,7 @@ fn called_from_info() {
             let lines: Vec<usize> = $lines;
             if lines != simplified_actual {
                 println!("Unexpected called_from from phase at {:?}", phase.src);
-                assert_eq!(lines, simplified_actual)
+                assert_eq!(simplified_actual, lines)
             }
         }};
     }
