@@ -156,8 +156,7 @@ impl Overseer for ControllerOverseer {
                      _stack: &[HashMap<Token, FrameData>],
                      ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
-            self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()))
-                .expect("send");
+            let _ = self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()));
         }
     }
 
