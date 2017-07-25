@@ -229,10 +229,14 @@ impl Controller {
     /// Modifies the pause time, the duration the interpreter will block for
     /// before non-trivial AST interpretation waiting for a #unpause() or #cancel() call
     /// after the duration execution will continue automatically
-    pub fn set_unpause_after(&mut self, pause_time: Duration) {
+    pub fn set_pause_duration(&mut self, pause_time: Duration) {
         self.pause_time = pause_time;
         // ignore errors to allow setting pause_time before execution
         let _ = self.overseer_pause.update(self.pause_time);
+    }
+
+    pub fn pause_duration(&self) -> Duration {
+        self.pause_time
     }
 
     /// Unblocks current waiting phase's execution, if it is blocked.
