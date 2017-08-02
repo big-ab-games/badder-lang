@@ -2,7 +2,7 @@ use std::fmt;
 
 /// `SourceRef`(`line`, `character_start`, `character_end`)
 /// inclusive `character_start`, exclusive `character_end`
-#[derive(Clone, Copy, PartialEq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SourceRef(pub (usize, usize), pub (usize, usize));
 
 impl SourceRef {
@@ -28,6 +28,7 @@ impl fmt::Debug for SourceRef {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BadderError {
     pub description: String,
     pub src: SourceRef,
@@ -39,6 +40,7 @@ impl fmt::Debug for BadderError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PartialBadderError(SourceRef);
 
 impl BadderError {

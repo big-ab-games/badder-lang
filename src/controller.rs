@@ -371,7 +371,7 @@ impl Controller {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct ExternalCall {
     pub id: Token,
     pub args: Vec<Int>,
