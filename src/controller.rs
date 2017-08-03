@@ -323,6 +323,10 @@ impl Controller {
         self.external_function_ids.push(Token::Id(id.into()));
     }
 
+    pub fn clear_external_functions(&mut self) {
+        self.external_function_ids.clear();
+    }
+
     pub fn current_external_call(&self) -> Option<ExternalCall> {
         self.current_external_call.clone()
     }
