@@ -129,17 +129,28 @@ impl Ast {
                 }
                 out + &next.debug_string()
             },
-            Ast::Line(scope, ref expr, ..) => {
-                format!("-{}{}> {}", scope, "-".repeat(scope), expr.debug_string())
+            Ast::Line(scope, ref expr, src, ..) => {
+                format!("{:3}:-{}{}> {}", (src.0).0, scope, "-".repeat(scope), expr.debug_string())
             },
-            Ast::If(ref expr, ref block, None, ..) => {
-                format!("If({})\n{}", expr.debug_string(), block.debug_string())
+            Ast::If(ref expr, ref block, None, is_else, ..) => {
+                format!("{}({})\n{}",
+                    if is_else { "Else" } else { "If" },
+                    expr.debug_string(),
+                    block.debug_string())
             },
-            Ast::If(ref expr, ref block, Some(ref elif), ..) => {
-                format!("If({})\n{}\nElse{}",
-                        expr.debug_string(),
-                        block.debug_string(),
-                        elif.debug_string())
+            Ast::If(ref expr, ref block, Some(ref elif), /*is else*/true, src) => {
+                format!("ElseIf({})\n{}\n{}",
+                    expr.debug_string(),
+                    block.debug_string(),
+                    elif.debug_string()
+                        .replacen("\n", &format!(" (attached to line {})\n", (src.0).0), 1))
+            },
+            Ast::If(ref expr, ref block, Some(ref elif), /*is else*/false, src) => {
+                format!("If({})\n{}\n{}",
+                    expr.debug_string(),
+                    block.debug_string(),
+                    elif.debug_string()
+                        .replacen("\n", &format!(" (attached to line {})\n", (src.0).0), 1))
             },
             Ast::While(ref expr, ref block, ..) => {
                 format!("While({})\n{}", expr.debug_string(), block.debug_string())
@@ -165,6 +176,11 @@ impl Ast {
             }
         }
         false
+    }
+
+    fn line_scope(&self) -> Option<usize> {
+        if let Ast::Line(scope, ..) = *self { Some(scope) }
+        else { None }
     }
 
     pub fn src(&self) -> SourceRef {
@@ -210,6 +226,10 @@ pub struct Parser<'a> {
     current_src_ref: SourceRef,
     /// stack of 'next lines' that we want to process later with earlier lines at the top
     unused_lines: Vec<Ast>,
+}
+
+enum ListParseEdgeCase {
+    DotCall(Ast),
 }
 
 impl<'a> Parser<'a> {
@@ -287,8 +307,19 @@ impl<'a> Parser<'a> {
         }
         while self.current_token != ClsBrace {
             match self.listref()? {
-                Some(list) => args.push(list),
-                _ => args.push(self.expr()?),
+                Ok(Some(list)) => args.push(list),
+                Ok(None) => args.push(self.expr()?),
+                Err(ListParseEdgeCase::DotCall(list)) => {
+                    self.consume(Dot)?;
+                    let fun_id = self.consume(Id("identifier".into()))?;
+                    let mut call = self.fun_call(Some(list), fun_id)?;
+                    // handle further chained dot calls
+                    while self.consume_maybe(Dot)?.is_some() {
+                        let fun_id = self.consume(Id("identifier".into()))?;
+                        call = self.fun_call(Some(call), fun_id)?;
+                    }
+                    args.push(call);
+                },
             }
 
             if self.consume_maybe(Comma)?.is_none() {
@@ -318,8 +349,10 @@ impl<'a> Parser<'a> {
             }
             else {
                 match self.listref()? {
-                    Some(list) => list,
-                    _ => {
+                    // dot calls handled later
+                    Err(ListParseEdgeCase::DotCall(list)) => list,
+                    Ok(Some(list)) => list,
+                    Ok(None) => {
                         let id = self.consume(Id("identifier".into()))?;
                         if self.current_token == OpnBrace { // function call
                             match self.fun_call(None, id)? {
@@ -477,7 +510,8 @@ impl<'a> Parser<'a> {
         }
         // else will be in unused_lines as they would mark the end of an if block
         if let Some(line) = self.unused_lines.pop() {
-            if line.is_else_line() {
+            // must match scope, otherwise could be a valid else for a parent if
+            if line.is_else_line() && line.line_scope() == Some(scope) {
                 return Ok(Ast::if_else(expr, block.unwrap(), line, is_else, src));
             }
             self.unused_lines.push(line);
@@ -585,27 +619,40 @@ impl<'a> Parser<'a> {
     }
 
     /// return optional list match
-    fn listref(&mut self) -> Res<Option<Ast>> {
+    fn listref(&mut self) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
         if self.consume_maybe(OpnBrace)?.is_some() {
             let list = self.list()?;
             self.consume(ClsBrace)?;
-            return Ok(Some(list));
+            return Ok(Ok(Some(list)));
         }
         let src = self.current_src_ref;
         if let Id(..) = self.current_token {
             if self.lexer.peek()? == Square {
                 let id = self.consume(Id("identifier".into()))?;
                 self.consume(Square)?;
-                return Ok(Some(Ast::ReferSeq(id_to_seq_id(&id), src.up_to_end_of(self.current_src_ref))));
+                let refer = Ast::ReferSeq(
+                    id_to_seq_id(&id),
+                    src.up_to_end_of(self.current_src_ref));
+                return if self.current_token == Dot {
+                    Ok(Err(ListParseEdgeCase::DotCall(refer)))
+                }
+                else { Ok(Ok(Some(refer))) };
             }
         }
-        Ok(None)
+        Ok(Ok(None))
     }
 
     fn list(&mut self) -> Res<Ast> {
         let src = self.current_src_ref;
-        if let Some(list) = self.listref()? {
-            return Ok(list);
+        match self.listref()? {
+            Ok(Some(list)) => return Ok(list),
+            Err(ListParseEdgeCase::DotCall(..)) => {
+                // functions cannot (yet) return seqs so this can't work
+                return Err(BadderError::at(self.current_src_ref)
+                    .describe(format!("Parser: Expected sequence reference/literal got `{}`",
+                        self.current_token.long_debug())))
+            },
+            Ok(None) => (),
         }
         let mut exprs = vec![self.expr()?];
         while self.consume_maybe(Comma)?.is_some() {
@@ -1033,6 +1080,17 @@ mod issues {
             "            return 234",
             "    return 123",
             "some_func()"].join("\n")
-        ).unwrap();
+        ).expect("parse");
+    }
+
+    #[test]
+    fn seq_nested_dot_calling() {
+        let _ = pretty_env_logger::init();
+        Parser::parse_str(&vec![
+            "fun plus(a1, a2)",
+            "    a1 + a2",
+            "seq list[]",
+            "list[].add(list[].size().plus(123))"].join("\n")
+        ).expect("parse");
     }
 }

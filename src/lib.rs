@@ -935,6 +935,30 @@ mod issues {
                         "    break";
                         "1" => 1);
     }
+
+    #[test]
+    fn if_else_if_else_never_hitting_else() {
+        assert_program!(
+            "var x = 123";
+            "var y = 234";
+            "if x is 123 and y is 123";
+            "    # bunch of stuff";
+            "    if 1";
+            "        var z = x + y";
+            "        call_some_function()";
+            "else if y is not 234";
+            "    # more stuff";
+            "    var z";
+            "    if 1 - 1";
+            "        z = x - 2 * y";
+            "    else";
+            "        z = x - y";
+            "    call_another_func()";
+            "else ";
+            "    x = 3";
+            "    y = 5";
+            "x + y" => 8);
+    }
 }
 
 #[cfg(test)]
