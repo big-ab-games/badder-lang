@@ -333,7 +333,9 @@ impl Controller {
 
     pub fn answer_external_call(&mut self, result: Result<Int, String>) {
         self.current_external_call = None;
-        self.external_function_answer.send(result).expect("external_function_answer.send");
+        if let Err(err) = self.external_function_answer.send(result) {
+            warn!("Comms failure with badder runtime when answering external call: {}", err);
+        }
     }
 
     /// Start executing code with a new thread.
