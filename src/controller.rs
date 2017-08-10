@@ -191,6 +191,9 @@ pub struct Controller {
     current_external_call: Option<ExternalCall>,
     external_function_ids: Vec<Token>,
 
+    /// #cancel() has been called this run
+    cancelled: bool,
+
     from_overseer: mpsc::Receiver<OverseerUpdate>,
     execution_result: mpsc::Receiver<Res<Int>>,
     to_overseer: mpsc::Sender<Result<u64, ()>>,
@@ -208,6 +211,7 @@ impl Controller {
             result: None,
             current_external_call: None,
             external_function_ids: Vec::new(),
+            cancelled: false,
             from_overseer: mpsc::channel().1,
             execution_result: mpsc::channel().1,
             to_overseer: mpsc::channel().0,
@@ -251,15 +255,17 @@ impl Controller {
 
     /// Requests any current executing interpreter be cancelled
     pub fn cancel(&mut self) {
-        self.current_phase = None;
-        self.fun_call_history.clear();
-        let _ = self.to_overseer.send(Err(()));
+        if !self.cancelled {
+            self.cancelled = true;
+            self.fun_call_history.clear();
+            let _ = self.to_overseer.send(Err(()));
+        }
     }
 
     /// Returns current execution phase, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn current_phase(&self) -> Option<Phase> {
-        self.current_phase.clone()
+        if self.cancelled { None } else { self.current_phase.clone() }
     }
 
     /// Returns result of execution
@@ -270,6 +276,8 @@ impl Controller {
     /// Returns current execution is paused, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn paused(&self) -> bool {
+        if self.cancelled { return false; }
+
         if let Some(Phase { time, unpaused,  .. }) = self.current_phase {
             !unpaused && time.elapsed() < self.pause_time
         }
@@ -316,7 +324,10 @@ impl Controller {
     }
 
     fn current_call_info(&self) -> Vec<SourceRef> {
-        self.fun_call_history.iter().rev().cloned().collect()
+        if self.cancelled { vec![] }
+        else {
+            self.fun_call_history.iter().rev().cloned().collect()
+        }
     }
 
     pub fn add_external_function(&mut self, id: &str) {
@@ -358,6 +369,7 @@ impl Controller {
         self.current_phase = None;
         self.fun_call_history.clear();
         self.current_external_call = None;
+        self.cancelled = false;
 
         let external_function_ids = self.external_function_ids.clone();
 
