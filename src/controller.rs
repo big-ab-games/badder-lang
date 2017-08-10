@@ -339,7 +339,7 @@ impl Controller {
     }
 
     pub fn current_external_call(&self) -> Option<ExternalCall> {
-        self.current_external_call.clone()
+        if self.cancelled { None } else { self.current_external_call.clone() }
     }
 
     pub fn answer_external_call(&mut self, result: Result<Int, String>) {
