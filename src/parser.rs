@@ -505,7 +505,7 @@ impl<'a> Parser<'a> {
             allow,
         )?;
         if block.is_none() {
-            return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
+            return Err(BadderError::at(src.up_to_next_line())
                 .describe("Parser: Expected line after `if,else` with exactly +1 indent"));
         }
         // else will be in unused_lines as they would mark the end of an if block
@@ -560,7 +560,7 @@ impl<'a> Parser<'a> {
             loop_allow,
         )?;
         if block.is_none() {
-            return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
+            return Err(BadderError::at(src.up_to_next_line())
                 .describe("Parser: Expected line after `loop,while,for` with exactly +1 indent"));
         }
         Ok(if let Some((idx_id, item_id, list)) = for_stuff {
@@ -612,7 +612,7 @@ impl<'a> Parser<'a> {
             vec![Return].into(),
         )?;
         if block.is_none() {
-            return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
+            return Err(BadderError::at(src.up_to_next_line())
                 .describe("Parser: Expected line after `fun` declaration with exactly +1 indent"));
         }
         Ok(Ast::AssignFun(Id(signature.into()), arg_ids, block.unwrap().into(), src))

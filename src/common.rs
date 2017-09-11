@@ -17,6 +17,10 @@ impl SourceRef {
     pub fn up_to_end_of(&self, other: SourceRef) -> SourceRef {
         self.with_char_end(other.1)
     }
+
+    pub fn up_to_next_line(self) -> SourceRef {
+        SourceRef(self.0, ((self.0).0 + 1, 1))
+    }
 }
 
 impl fmt::Debug for SourceRef {
