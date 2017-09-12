@@ -294,7 +294,7 @@ impl<'a> Lexer<'a> {
             }
 
             return Err(BadderError::at(self.cursor())
-                .describe(format!("Lexer: Unexpected char: `{}`", c)));
+                .describe(Stage::Lexer, format!("Unexpected char: `{}`", c)));
         }
 
         Ok(Eof)
@@ -338,7 +338,7 @@ impl<'a> Lexer<'a> {
                 }
 
                 return Err(BadderError::at(src_ref.up_to(self.cursor()))
-                    .describe("Lexer: Invalid indent must be multiple of 4 spaces"));
+                    .describe(Stage::Lexer, "Invalid indent must be multiple of 4 spaces"));
             }
             return Ok((Indent(spaces / 4), src_ref.up_to(self.cursor())));
         }
@@ -359,7 +359,7 @@ impl<'a> Lexer<'a> {
             return match number_str.parse() {
                 Ok(n) => Ok((Num(n), src_ref)),
                 Err(e) => Err(BadderError::at(src_ref)
-                    .describe(format!("Lexer: could not parse number: {}", e))),
+                    .describe(Stage::Lexer, format!("could not parse number: {}", e))),
             };
         }
 

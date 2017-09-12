@@ -182,7 +182,7 @@ fn bool_to_num(b: bool) -> Int {
 }
 
 fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
-    Err(Error(BadderError::at(UNKNOWN_SRC_REF).describe(desc.into())))
+    Err(Error(BadderError::at(UNKNOWN_SRC_REF).describe(Stage::Interpreter, desc.into())))
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
@@ -218,11 +218,11 @@ impl<O: Overseer> Interpreter<O> {
             .flat_map(|(_, m)| m.keys())
             .collect();
         if keys.is_empty() {
-            format!("Interpreter: id `{:?}` not found in scope", id)
+            format!("id `{:?}` not found in scope", id)
         }
         else {
             assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
-            format!("Interpreter: id `{:?}` not found in scope, {:?} available", id, keys)
+            format!("id `{:?}` not found in scope, {:?} available", id, keys)
         }
     }
 
@@ -270,7 +270,7 @@ impl<O: Overseer> Interpreter<O> {
             Mod => Ok(eval!(left)? % eval!(right)?),
             Div => {
                 match eval!(right)? {
-                    0 => parent_error("Interpreter: Cannot divide by zero"),
+                    0 => parent_error("Cannot divide by zero"),
                     divisor => Ok(eval!(left)? / divisor),
                 }
             },
@@ -291,7 +291,7 @@ impl<O: Overseer> Interpreter<O> {
             Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
             GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
             LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
-            _ => parent_error(format!("Interpreter: Unexpected BinOp token `{:?}`", token)),
+            _ => parent_error(format!("Unexpected BinOp token `{:?}`", token)),
         }
     }
 
@@ -397,7 +397,7 @@ impl<O: Overseer> Interpreter<O> {
                     Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
                     _ => {
                         return parent_error(format!(
-                            "Interpreter: Invalid reference to non callable `{:?}`",
+                            "Invalid reference to non callable `{:?}`",
                             id
                         ))
                     },
@@ -456,14 +456,14 @@ impl<O: Overseer> Interpreter<O> {
             let seq_len = match self.stack[idx][&seq_id] {
                 Sequence(ref v) => Ok(v.len()),
                 ref data => parent_error(format!(
-                    "Interpreter: Invalid sequence index reference to non-sequence `{}`",
+                    "Invalid sequence index reference to non-sequence `{}`",
                     data.desc(&seq_id)
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
             if seq_len as usize <= index  {
                 return parent_error(format!(
-                    "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
+                    "Invalid sequence index {} not in 0..{} (or negative)",
                     index,
                     seq_len));
             }
@@ -494,14 +494,14 @@ impl<O: Overseer> Interpreter<O> {
             let seq_len = match self.stack[idx][&seq_id] {
                 Sequence(ref v) => Ok(v.len()),
                 ref data => parent_error(format!(
-                    "Interpreter: Invalid sequence index reassignment to non-sequence `{}`",
+                    "Invalid sequence index reassignment to non-sequence `{}`",
                     data.desc(&seq_id)
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
             if seq_len as usize <= index  {
                 return parent_error(format!(
-                    "Interpreter: Invalid sequence index {} not in 0..{} (or negative)",
+                    "Invalid sequence index {} not in 0..{} (or negative)",
                     index,
                     seq_len));
             }
@@ -530,7 +530,7 @@ impl<O: Overseer> Interpreter<O> {
         self.log_eval(ast, current_scope, stack_key);
 
         if self.overseer.oversee(&self.stack, ast, current_scope, stack_key).is_err() {
-            return Err(Error(BadderError::at(ast.src()).describe("cancelled")));
+            return Err(Error(BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled")));
         }
 
         let result = match *ast {
@@ -565,7 +565,7 @@ impl<O: Overseer> Interpreter<O> {
                     match self.stack[idx][id] {
                         Value(v) => Ok(v),
                         _ => parent_error(format!(
-                            "Interpreter: Invalid reference to non number `{:?}`",
+                            "Invalid reference to non number `{:?}`",
                             id)),
                     }
                 }
@@ -598,11 +598,11 @@ impl<O: Overseer> Interpreter<O> {
                     match *token {
                         Break => Err(LoopBreak),
                         Continue => Err(LoopContinue),
-                        _ => parent_error(format!("Interpreter: Unknown loop nav `{:?}`", token)),
+                        _ => parent_error(format!("Unknown loop nav `{:?}`", token)),
                     }
                 }
                 else {
-                    parent_error(format!("Interpreter: Invalid use of loop nav `{:?}`", token))
+                    parent_error(format!("Invalid use of loop nav `{:?}`", token))
                 }
             },
             Ast::AssignFun(ref id, ref args, ref block, ..) => {
@@ -611,10 +611,11 @@ impl<O: Overseer> Interpreter<O> {
                     None | Some(&Callable(..)) => (), // overwrite
                     Some(other) => {
                         let desc = format!(
-                            "Interpreter: Declaration `fun {:?}` conflicts with `{}` in same scope",
+                            "Declaration `fun {:?}` conflicts with `{}` in same scope",
                             id,
                             other.desc(id));
-                        return Err(Error(BadderError::at(ast.src()).describe(desc)));
+                        return Err(Error(BadderError::at(ast.src())
+                            .describe(Stage::Interpreter, desc)));
                     }
                 };
                 self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
@@ -636,10 +637,11 @@ impl<O: Overseer> Interpreter<O> {
                     None | Some(&Sequence(..)) => (), // overwrite
                     Some(other) => {
                         let desc = format!(
-                            "Interpreter: Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
+                            "Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
                             id,
                             other.desc(id));
-                        return Err(Error(BadderError::at(ast.src()).describe(desc)));
+                        return Err(Error(BadderError::at(ast.src())
+                            .describe(Stage::Interpreter, desc)));
                     }
                 };
                 self.stack[current_scope].insert(id.clone(), Sequence(v));
@@ -662,18 +664,18 @@ impl<O: Overseer> Interpreter<O> {
                 eval!(next)
             },
             Ast::Empty(..) => Ok(0),
-            _ => parent_error(format!("Interpreter: Unexpected syntax {:?}", ast)),
+            _ => parent_error(format!("Unexpected syntax {:?}", ast)),
         };
 
         self.overseer.oversee_after(&self.stack, ast);
 
         match result {
-            Err(Error(BadderError{ description, src })) => {
+            Err(Error(BadderError { stage, description, src })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(BadderError::at(ast.src()).describe(description)))
+                    Err(Error(BadderError::at(ast.src()).describe(stage, description)))
                 }
                 else {
-                    Err(Error(BadderError::at(src).describe(description)))
+                    Err(Error(BadderError::at(src).describe(stage, description)))
                 }
             },
             x => x
@@ -704,23 +706,23 @@ impl<O: Overseer> Interpreter<O> {
                     match self.stack[idx][&id] {
                         Sequence(ref v) => Ok(v.clone()),
                         ref data => parent_error(format!(
-                            "Interpreter: Invalid sequence referal to non-sequence `{}`",
+                            "Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
                         )),
                     }
                 }
                 else { parent_error(self.unknown_id_err(id, stack_key)) }
             },
-            _ => parent_error(format!("Interpreter: Unexpected Seq syntax {:?}", list)),
+            _ => parent_error(format!("Unexpected Seq syntax {:?}", list)),
         };
 
         match result {
-            Err(Error(BadderError{ description, src })) => {
+            Err(Error(BadderError { stage, description, src })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(BadderError::at(list.src()).describe(description)))
+                    Err(Error(BadderError::at(list.src()).describe(stage, description)))
                 }
                 else {
-                    Err(Error(BadderError::at(src).describe(description)))
+                    Err(Error(BadderError::at(src).describe(stage, description)))
                 }
             },
             x => x
@@ -761,7 +763,7 @@ impl<O: Overseer> Interpreter<O> {
                             }
                         },
                         Some(ref data) => parent_error(format!(
-                            "Interpreter: Invalid sequence referal to non-sequence `{}`",
+                            "Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
                         )),
                         None => unreachable!(),
@@ -835,7 +837,7 @@ mod util {
             }
         }
         Err(BadderError::at(SourceRef((0, 0),(0, 0))) // TODO
-            .describe(format!("Program did not return within {:?}", timeout)))
+            .describe(Stage::Interpreter, format!("Program did not return within {:?}", timeout)))
     }
 
     fn print_program_debug(code: &str) -> Res<()> {

@@ -270,7 +270,7 @@ impl<'a> Parser<'a> {
                 .collect::<Vec<String>>()
                 .join(",");
             Err(BadderError::at(self.current_src_ref)
-                .describe(format!("Parser: Expected `{}` got {}",
+                .describe(Stage::Parser, format!("Expected `{}` got {}",
                                   expected,
                                   self.current_token.long_debug())))
         }
@@ -506,7 +506,7 @@ impl<'a> Parser<'a> {
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line())
-                .describe("Parser: Expected line after `if,else` with exactly +1 indent"));
+                .describe(Stage::Parser, "Expected line after `if,else` with exactly +1 indent"));
         }
         // else will be in unused_lines as they would mark the end of an if block
         if let Some(line) = self.unused_lines.pop() {
@@ -561,7 +561,7 @@ impl<'a> Parser<'a> {
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line())
-                .describe("Parser: Expected line after `loop,while,for` with exactly +1 indent"));
+                .describe(Stage::Parser, "Expected line after `loop,while,for` with exactly +1 indent"));
         }
         Ok(if let Some((idx_id, item_id, list)) = for_stuff {
             let src = src.up_to_end_of(list.src());
@@ -613,7 +613,7 @@ impl<'a> Parser<'a> {
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line())
-                .describe("Parser: Expected line after `fun` declaration with exactly +1 indent"));
+                .describe(Stage::Parser, "Expected line after `fun` declaration with exactly +1 indent"));
         }
         Ok(Ast::AssignFun(Id(signature.into()), arg_ids, block.unwrap().into(), src))
     }
@@ -649,7 +649,7 @@ impl<'a> Parser<'a> {
             Err(ListParseEdgeCase::DotCall(..)) => {
                 // functions cannot (yet) return seqs so this can't work
                 return Err(BadderError::at(self.current_src_ref)
-                    .describe(format!("Parser: Expected sequence reference/literal got `{}`",
+                    .describe(Stage::Parser, format!("Expected sequence reference/literal got `{}`",
                         self.current_token.long_debug())))
             },
             Ok(None) => (),
@@ -745,8 +745,8 @@ impl<'a> Parser<'a> {
                         },
                         _ => {
                             return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
-                                .describe(format!("Parser: expecting seq index ref id[expr], got {:?}",
-                                                  out)));
+                                .describe(Stage::Parser,
+                                    format!("expecting seq index ref id[expr], got {:?}", out)));
                        }
                     }
                 }

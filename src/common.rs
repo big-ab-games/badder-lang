@@ -32,15 +32,23 @@ impl fmt::Debug for SourceRef {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Stage {
+    Lexer,
+    Parser,
+    Interpreter,
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BadderError {
+    pub stage: Stage,
     pub description: String,
     pub src: SourceRef,
 }
 
 impl fmt::Debug for BadderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} {}", self.src, self.description)
+        write!(f, "{:?} {:?}: {}", self.src, self.stage, self.description)
     }
 }
 
@@ -54,8 +62,9 @@ impl BadderError {
 }
 
 impl PartialBadderError {
-    pub fn describe<S: Into<String>>(self, desc: S) -> BadderError {
+    pub fn describe<S: Into<String>>(self, stage: Stage, desc: S) -> BadderError {
         BadderError {
+            stage,
             description: desc.into(),
             src: self.0
         }
