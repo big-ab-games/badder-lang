@@ -330,8 +330,8 @@ impl<'a> Parser<'a> {
         self.consume(ClsBrace)?;
         for arg in &args {
             match *arg {
-                Ast::Seq(..) | Ast::ReferSeq(..) => signature += "l",
-                _ => signature += "n",
+                Ast::Seq(..) | Ast::ReferSeq(..) => signature += "s",
+                _ => signature += "v",
             }
         }
         signature += ")";
@@ -590,10 +590,10 @@ impl<'a> Parser<'a> {
         while let Some(mut arg) = self.consume_maybe(Id(id_name.clone()))? {
             if self.consume_maybe(Square)?.is_some() {
                 arg = id_to_seq_id(&arg);
-                signature += "l"
+                signature += "s"
             }
             else {
-                signature += "n";
+                signature += "v";
             }
             arg_ids.push(arg);
             if self.consume_maybe(Comma)?.is_none() {

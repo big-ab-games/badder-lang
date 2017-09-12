@@ -84,9 +84,9 @@ impl FrameData {
     }
 
     fn add_builtins_to(frame: &mut HashMap<Token, FrameData>) {
-        frame.insert(Id("size(l)".into()), BuiltinCallable(Builtin::Size));
-        frame.insert(Id("add(ln)".into()), BuiltinCallable(Builtin::SeqAdd));
-        frame.insert(Id("remove(ln)".into()), BuiltinCallable(Builtin::SeqRemove));
+        frame.insert(Id("size(s)".into()), BuiltinCallable(Builtin::Size));
+        frame.insert(Id("add(sv)".into()), BuiltinCallable(Builtin::SeqAdd));
+        frame.insert(Id("remove(sv)".into()), BuiltinCallable(Builtin::SeqRemove));
     }
 }
 

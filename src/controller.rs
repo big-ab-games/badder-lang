@@ -330,6 +330,9 @@ impl Controller {
         }
     }
 
+    /// Adds an external function signature
+    /// must be a valid badder signature to work
+    /// ie `some_ext_function(svv)` for a 3 arg function taking a sequence & 2 variable arguments
     pub fn add_external_function(&mut self, id: &str) {
         self.external_function_ids.push(Token::Id(id.into()));
     }

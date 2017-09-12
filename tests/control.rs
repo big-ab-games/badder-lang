@@ -11,7 +11,7 @@ macro_rules! await_next_pause {
         $controller.refresh();
         if $controller.paused() {
             $controller.unpause();
-            
+
         }
 
         let before = Instant::now();
@@ -147,12 +147,12 @@ fn external_functions_num_args() {
     let ast = Parser::parse_str(EXTERNAL_FUN_SRC).expect("parse");
 
     let mut con = Controller::new_no_pause();
-    con.add_external_function("external_sum(nn)");
+    con.add_external_function("external_sum(vv)");
     con.execute(ast);
 
     loop { // call 1
         if let Some(call) = con.current_external_call() {
-            assert_eq!(call.id, Token::Id("external_sum(nn)".into()));
+            assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
             assert_eq!(call.args, vec![123, 12]);
             con.answer_external_call(Ok(135));
             break;
@@ -164,7 +164,7 @@ fn external_functions_num_args() {
 
     loop { // call 2
         if let Some(call) = con.current_external_call() {
-            assert_eq!(call.id, Token::Id("external_sum(nn)".into()));
+            assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
             assert_eq!(call.args, vec![13, 135]);
             con.answer_external_call(Ok(-123)); // can be anything, obvs
             break;
