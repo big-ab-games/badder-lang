@@ -1,6 +1,7 @@
 #[macro_use] extern crate log;
 extern crate string_cache;
 extern crate single_value_channel;
+extern crate strsim;
 
 mod common;
 mod lexer;
@@ -8,7 +9,7 @@ mod parser;
 pub mod controller;
 
 use lexer::Token::*;
-use std::cmp::max;
+use std::cmp::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -17,6 +18,7 @@ use std::mem;
 use std::sync::Arc;
 use std::usize;
 use common::*;
+use strsim::damerau_levenshtein as str_dist;
 
 pub use lexer::Token;
 pub use parser::{Parser, Ast};
@@ -222,7 +224,19 @@ impl<O: Overseer> Interpreter<O> {
         }
         else {
             assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
-            format!("id `{:?}` not found in scope, {:?} available", id, keys)
+            let mut available: Vec<_> = keys.iter()
+                .map(|k| k.id_str().unwrap_or("#"))
+                .filter(|k| !k.starts_with('#'))
+                .collect();
+
+            available.sort_unstable(); // ensure consistent order (after hashsetting)
+
+            if let Some(id) = id.id_str() {
+                // sort by string simularity
+                available.sort_by_key(|known| str_dist(id, known));
+            }
+            let available = available.join(", ");
+            format!("id `{:?}` not found in scope, available: {{{}}}", id, available)
         }
     }
 
@@ -231,9 +245,16 @@ impl<O: Overseer> Interpreter<O> {
                          current_scope: usize,
                          stack_key: StackKey)
                          -> Option<usize> {
-        let mut idx = current_scope;
+        if self.stack.is_empty() {
+            return None;
+        }
+
+        let mut idx = min(self.stack.len() - 1, current_scope);
         loop {
-            if stack_key.can_access(idx) && self.stack[idx].contains_key(key) {
+            if stack_key.can_access(idx) &&
+                self.stack.len() > idx &&
+                self.stack[idx].contains_key(key)
+            {
                 return Some(idx);
             }
             if idx == 0 { break; }
@@ -556,7 +577,7 @@ impl<O: Overseer> Interpreter<O> {
                     Ok(v)
                 }
                 else {
-                    parent_error(format!("{}, did you mean `var {:?} =`?",
+                    parent_error(format!("{}, or did you mean `var {:?} =`?",
                                          self.unknown_id_err(id, stack_key), id))
                 }
             },

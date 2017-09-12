@@ -180,6 +180,13 @@ impl Token {
             _ => format!("keyword `{:?}`", self),
         }
     }
+
+    pub fn id_str(&self) -> Option<&str> {
+        if let Token::Id(ref inner) = *self {
+            Some(&inner)
+        }
+        else { None }
+    }
 }
 
 #[derive(Debug, Clone)]
