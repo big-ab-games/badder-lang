@@ -223,6 +223,7 @@ fn id_to_seq_id(id: &Token) -> Token {
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current_token: Token,
+    previous_token: Option<Token>,
     current_src_ref: SourceRef,
     /// stack of 'next lines' that we want to process later with earlier lines at the top
     unused_lines: Vec<Ast>,
@@ -239,16 +240,20 @@ impl<'a> Parser<'a> {
         Parser {
             lexer,
             current_token: first,
+            previous_token: None,
             current_src_ref: src_ref,
             unused_lines: Vec::new(),
         }.parse()
     }
 
     fn next_token(&mut self) -> Res<&Token> {
-        let (token, src_ref) = self.lexer.next_token()?;
+        let (mut token, src_ref) = self.lexer.next_token()?;
         trace!("{:?} @{:?}", token, src_ref);
-        self.current_token = token;
+
+        ::std::mem::swap(&mut self.current_token, &mut token);
         self.current_src_ref = src_ref;
+
+        self.previous_token = Some(token);
         Ok(&self.current_token)
     }
 
@@ -265,14 +270,27 @@ impl<'a> Parser<'a> {
                 .iter()
                 .map(|t| match t {
                     &Num(_) => "0-9".to_string(),
+                    &Eol | &Eof => t.long_debug(),
                     token => format!("{:?}", token),
                 })
                 .collect::<Vec<String>>()
                 .join(",");
+
+
+            let help_message = match self.current_token {
+                Token::Pls if self.previous_token == Some(Token::Pls) => {
+                    ", `++` is not an operator did you mean `+= 1`?"
+                },
+                _ => "",
+            };
+
             Err(BadderError::at(self.current_src_ref)
-                .describe(Stage::Parser, format!("Expected `{}` got {}",
-                                  expected,
-                                  self.current_token.long_debug())))
+                .describe(
+                    Stage::Parser,
+                    format!("Expected `{}` got {}{}",
+                        expected,
+                        self.current_token.long_debug(),
+                        help_message)))
         }
     }
 
