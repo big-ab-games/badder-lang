@@ -188,6 +188,10 @@ fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
+    if length == 0 {
+        return max(i, 0) as usize;
+    }
+
     let len = length as i32;
     if i < 0 { i = (len + i % len) % len; }
     i as usize
@@ -481,8 +485,15 @@ impl<O: Overseer> Interpreter<O> {
                     data.desc(&seq_id)
                 )),
             }?;
-            let index = convert_signed_index(eval!(index_expr)?, seq_len);
-            if seq_len as usize <= index  {
+            let actual_index = eval!(index_expr)?;
+            let index = convert_signed_index(actual_index, seq_len);
+            if seq_len == 0 {
+                return parent_error(format!(
+                    "Invalid sequence index {} not in empty sequence",
+                    actual_index
+                ));
+            }
+            else if seq_len as usize <= index  {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
                     index,
@@ -779,6 +790,18 @@ impl<O: Overseer> Interpreter<O> {
                                 }
                                 Builtin::SeqRemove => {
                                     let index = convert_signed_index(arg1.unwrap(), v.len());
+                                    if v.len() == 0 {
+                                        return parent_error(format!(
+                                            "Invalid sequence index {} not in empty sequence",
+                                            arg1.unwrap()
+                                        ));
+                                    }
+                                    else if v.len() <= index  {
+                                        return parent_error(format!(
+                                            "Invalid sequence index {} not in 0..{} (or negative)",
+                                            index,
+                                            v.len()));
+                                    }
                                     Ok(v.remove(index))
                                 }
                             }
