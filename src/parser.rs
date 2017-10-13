@@ -4,6 +4,7 @@ use lexer::Token::*;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::borrow::Cow;
 use string_cache::DefaultAtom as Atom;
 use common::*;
 
@@ -257,6 +258,42 @@ impl<'a> Parser<'a> {
         Ok(&self.current_token)
     }
 
+    fn parse_fail_help(&self) -> Option<Cow<'static, str>> {
+        let prev_help: Option<Cow<'static, str>> = match self.current_token {
+            Pls if self.previous_token == Some(Pls) => {
+                Some("`++` is not an operator did you mean `+= 1`?".into())
+            }
+            ref token if token.is_binary_op() && self.previous_token == Some(Is) => {
+                Some(format!("try using just `is` or `{:?}`.", token).into())
+            }
+            _ => None,
+        };
+
+        if prev_help.is_some() {
+            return prev_help;
+        }
+
+        // next token logic
+        let mut lex = self.lexer.clone();
+        if let Ok((next_token, ..)) = lex.next_token() {
+            match self.current_token {
+                Ass => match next_token {
+                    Gt => {
+                        Some("`=>` is not an operator did you mean `>=`?".into())
+                    }
+                    Lt => {
+                        Some("`=<` is not an operator did you mean `<=`?".into())
+                    }
+                    _ => None
+                },
+                _ => None,
+            }
+        }
+        else {
+            None
+        }
+    }
+
     fn consume_any(&mut self, types: &[Token]) -> Res<Token> {
         assert!(self.unused_lines.is_empty());
 
@@ -269,26 +306,26 @@ impl<'a> Parser<'a> {
             let expected = types
                 .iter()
                 .map(|t| match t {
-                    &Num(_) => "0-9".to_string(),
+                    &Num(_) => "0-9".into(),
                     &Eol | &Eof => t.long_debug(),
-                    token => format!("{:?}", token),
+                    token => format!("{:?}", token).into(),
                 })
-                .collect::<Vec<String>>()
+                .collect::<Vec<_>>()
                 .join(",");
 
 
-            let help_message = match self.current_token {
-                Token::Pls if self.previous_token == Some(Token::Pls) => {
-                    ", `++` is not an operator did you mean `+= 1`?"
-                },
-                _ => "",
-            };
+            let help_message = self.parse_fail_help()
+                .map(|msg| Cow::Owned(format!(", {}", msg)))
+                .unwrap_or("".into());
 
             Err(BadderError::at(self.current_src_ref)
                 .describe(
                     Stage::Parser,
-                    format!("Expected `{}` got {}{}",
+                    format!("Expected `{}`{} but got {}{}",
                         expected,
+                        self.previous_token.as_ref()
+                            .map(|t| Cow::Owned(format!(" to follow {}", t.long_debug())))
+                            .unwrap_or("".into()),
                         self.current_token.long_debug(),
                         help_message)))
         }
@@ -371,7 +408,7 @@ impl<'a> Parser<'a> {
                     Err(ListParseEdgeCase::DotCall(list)) => list,
                     Ok(Some(list)) => list,
                     Ok(None) => {
-                        let id = self.consume(Id("identifier".into()))?;
+                        let id = self.consume_any(&[Id("identifier".into()), Num(0)])?;
                         if self.current_token == OpnBrace { // function call
                             match self.fun_call(None, id)? {
                                 Ast::Call(token, ast, s) => Ast::Call(token, ast, src.up_to_end_of(s)),
@@ -516,6 +553,7 @@ impl<'a> Parser<'a> {
             allow = new_allow.into();
         }
         let block = self.lines_while_allowing(
+            scope + 1,
             |l| match *l {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
@@ -571,6 +609,7 @@ impl<'a> Parser<'a> {
             }
         };
         let block = self.lines_while_allowing(
+            scope + 1,
             |l| match *l {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
@@ -623,6 +662,7 @@ impl<'a> Parser<'a> {
         self.consume(Eol)?;
         signature += ")";
         let block = self.lines_while_allowing(
+            scope + 1,
             |l| match *l {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
@@ -827,13 +867,93 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn lines_while_allowing<F>(&mut self, predicate: F, allow: Rc<Vec<Token>>)
-        -> Res<Option<Ast>>
+    /// Checks a line as the expected scope
+    #[inline]
+    fn check_line_has_scope(ast: &Ast, expected_scope: usize) -> Res<()> {
+        if let Ast::Line(scope, _, src) = *ast {
+            if scope != expected_scope {
+                let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+                let hint = if expected_scope > scope {
+                    format!("try adding {}", expected_scope - scope)
+                }
+                else {
+                    format!("try removing {}", scope - expected_scope)
+                };
+                return Err(BadderError::at(indent_src_ref)
+                    .describe(
+                        Stage::Parser,
+                        format!(
+                            "Incorrect indentation, expected {} indent(s) {}",
+                            expected_scope,
+                            hint,
+                        ),
+                    ))
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks for correct indent from one line to the next
+    /// indentation should only increase by exactly 1 after an if,loop,for,while,fun
+    #[inline]
+    fn check_scope_change(line1: &Ast, line2: &Ast) -> Res<()> {
+        if let (
+            &Ast::Line(prev_scope, ref prev_expr, ..),
+            &Ast::Line(scope, _, src),
+        ) = (line1, line2)
+        {
+            if scope > prev_scope {
+                match **prev_expr {
+                    Ast::If(..) |
+                    Ast::While(..) |
+                    Ast::ForIn(..) |
+                    Ast::AssignFun(..) if scope == prev_scope + 1 => {}
+
+                    Ast::If(..) |
+                    Ast::While(..) |
+                    Ast::ForIn(..) |
+                    Ast::AssignFun(..) => {
+                        let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+                        return Err(BadderError::at(indent_src_ref)
+                            .describe(
+                                Stage::Parser,
+                                "Incorrect indentation, exactly +1 indent must used after a line starting with `if,loop,for,while,fun`"
+                            ))
+                    }
+
+                    _ => {
+                        let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+                        return Err(BadderError::at(indent_src_ref)
+                            .describe(
+                                Stage::Parser,
+                                "Incorrect indentation, +1 indent can only occur after a line starting with `if,loop,for,while,fun`"
+                            ))
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn lines_while_allowing<F>(
+        &mut self,
+        first_line_scope: usize,
+        predicate: F,
+        allow: Rc<Vec<Token>>,
+    ) -> Res<Option<Ast>>
         where F: Fn(&Ast) -> bool
     {
         let mut all = vec![];
         let mut line = self.indented_line(allow.clone())?;
+
         while match line { Ast::Empty(..) => false, ref l => predicate(l) } {
+            if all.is_empty() {
+                Self::check_line_has_scope(&line, first_line_scope)?;
+            }
+            if let (line, Some(ref prev_line)) = (&line, all.last()) {
+                Self::check_scope_change(prev_line, line)?;
+            }
+
             all.push(line);
             line = self.indented_line(allow.clone())?;
         }
@@ -853,7 +973,7 @@ impl<'a> Parser<'a> {
     }
 
     fn lines_while<F>(&mut self, predicate: F) -> Res<Option<Ast>> where F: Fn(&Ast) -> bool {
-        self.lines_while_allowing(predicate, vec![].into())
+        self.lines_while_allowing(0, predicate, vec![].into())
     }
 
     pub fn parse(&mut self) -> Res<Ast> {
@@ -950,11 +1070,20 @@ mod parser_test {
     fn seq_src_ref() {
         let _ = pretty_env_logger::init();
 
-        let mut ast = Parser::parse_str("        seq some_id[] = 1345, 2").unwrap();
+        let mut ast = Parser::parse_str("seq some_id[] = 1345, 2").unwrap();
 
-        ast = *expect_ast!(ast = Ast::Line(2, ast, ..), src = SourceRef((1, 1), (1, 32)));
-        ast = *expect_ast!(ast = Ast::AssignSeq(_, ast, ..), src = SourceRef((1, 9), (1, 32)));
-        let seq_ast: Vec<Ast> = expect_ast!(ast = Ast::Seq(ast, ..), src = SourceRef((1, 25), (1, 32)));
+        ast = *expect_ast!(
+            ast = Ast::Line(0, ast, ..),
+            src = SourceRef((1, 1), (1, 24))
+        );
+        ast = *expect_ast!(
+            ast = Ast::AssignSeq(_, ast, ..),
+            src = SourceRef((1, 1), (1, 24))
+        );
+        let seq_ast: Vec<Ast> = expect_ast!(
+            ast = Ast::Seq(ast, ..),
+            src = SourceRef((1, 17), (1, 24))
+        );
 
         assert_eq!(seq_ast.len(), 2);
         assert_src_eq!(seq_ast[0], SourceRef((1, 25), (1, 29)));
@@ -1081,6 +1210,72 @@ mod parser_test {
     }
 }
 
+#[cfg(test)]
+mod helpful_error {
+    extern crate pretty_env_logger;
+
+    use super::*;
+
+    #[test]
+    fn reversed_greater_or_equal() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "if 12 => 11", // `=>` misspelled
+            "    0"].join("\n")
+        ).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
+        assert!(err.description.contains("`>=`"), "error did not suggest `>=`");
+    }
+
+    #[test]
+    fn reversed_less_than_or_equal() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "if 12 =< 11", // `=>` misspelled
+            "    0"].join("\n")
+        ).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
+        assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
+    }
+
+    #[test]
+    fn var_plus_plus() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "var x",
+            "x++"].join("\n")
+        ).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((2, 3), (2, 4)));
+        assert!(err.description.contains("`+= 1`"), "error did not suggest `+= 1`");
+    }
+
+    #[test]
+    fn is_is_greater_than() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "12 is > 11",
+        ].join("\n")).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
+        assert!(err.description.contains("`is` or `>`"), "error did not suggest `is` or `>`");
+    }
+}
+
 // reproductions of encountered issues/bugs
 #[cfg(test)]
 mod issues {
@@ -1097,8 +1292,9 @@ mod issues {
             "        if i > 4",
             "            return 234",
             "    return 123",
-            "some_func()"].join("\n")
-        ).expect("parse");
+            "some_func()",
+        ].join("\n"))
+            .expect("parse");
     }
 
     #[test]
@@ -1108,7 +1304,40 @@ mod issues {
             "fun plus(a1, a2)",
             "    a1 + a2",
             "seq list[]",
-            "list[].add(list[].size().plus(123))"].join("\n")
-        ).expect("parse");
+            "list[].add(list[].size().plus(123))",
+        ].join("\n"))
+            .expect("parse");
+    }
+
+    #[test]
+    fn over_indenting() {
+        let _ = pretty_env_logger::init();
+        let err = Parser::parse_str(&vec![
+            "var x",
+            "    x = 1",
+            "        x += 12"
+        ].join("\n"))
+            .expect_err("did not fail parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((2, 1), (2, 5)));
+        assert!(err.description.contains("indent"), "error did contain 'indent'");
+    }
+
+    #[test]
+    fn over_indenting_after_if() {
+        let _ = pretty_env_logger::init();
+        let err = Parser::parse_str(&vec![
+            "var x",
+            "if x is 0",
+            "            x += 12"
+        ].join("\n"))
+            .expect_err("did not fail parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((3, 1), (3, 13)));
+        assert!(err.description.contains("indent"), "error did contain 'indent'");
     }
 }

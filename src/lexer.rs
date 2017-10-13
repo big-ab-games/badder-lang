@@ -1,6 +1,7 @@
 use super::Int;
 use std::fmt;
 use std::iter::Peekable;
+use std::borrow::Cow;
 use std::str::Chars;
 use string_cache::DefaultAtom as Atom;
 use common::*;
@@ -165,19 +166,19 @@ impl Token {
         }
     }
 
-    pub fn long_debug(&self) -> String {
+    pub fn long_debug(&self) -> Cow<'static, str> {
         match *self {
-            Num(x) => format!("number `{}`", x),
-            Id(ref id) => format!("id `{}`", id),
+            Num(x) => format!("number `{}`", x).into(),
+            Id(ref id) => format!("id `{}`", id).into(),
             Pls | Sub | Mul | Div | OpnBrace | ClsBrace | Ass | OpAss(_) | Gt | Lt | GtEq | LtEq => {
-                format!("operator `{:?}`", self)
+                format!("operator `{:?}`", self).into()
             },
-            Indent(_) => format!("indent {:?}", self),
+            Indent(_) => format!("indent {:?}", self).into(),
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
             Comma => "`,`".into(),
             Dot => "`.`".into(),
-            _ => format!("keyword `{:?}`", self),
+            _ => format!("keyword `{:?}`", self).into(),
         }
     }
 
@@ -186,6 +187,14 @@ impl Token {
             Some(&inner)
         }
         else { None }
+    }
+
+    pub fn is_binary_op(&self) -> bool {
+        match *self {
+            Pls | Sub | Mul | Div | Ass | Gt | GtEq | Lt | LtEq | Mod | OpAss(_) | Is | And
+            | Or | In | Dot => true,
+            _ => false
+        }
     }
 }
 

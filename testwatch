@@ -2,4 +2,4 @@
 cargo_name="$(cat Cargo.toml | grep -m1 'name = ' | cut -d'"' -f2)"
 RUST_BACKTRACE=0 \
  RUST_LOG=$cargo_name=debug \
- nodemon -e rs,badder --ignore 'target/*' --exec cargo test "$@"
+ nodemon -e rs,badder --ignore 'target/*' --exec nightcargo test "$@"
