@@ -324,7 +324,7 @@ impl<'a> Parser<'a> {
                     format!("Expected `{}`{} but got {}{}",
                         expected,
                         self.previous_token.as_ref()
-                            .map(|t| Cow::Owned(format!(" to follow {}", t.long_debug())))
+                            .map(|t| Cow::Owned(format!(" to follow `{:?}`", t)))
                             .unwrap_or("".into()),
                         self.current_token.long_debug(),
                         help_message)))
