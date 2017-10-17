@@ -1,7 +1,7 @@
 use super::*;
 use std::time::*;
 use std::sync::mpsc;
-use std::thread;
+use std::{u32, u64, thread};
 use std::sync::mpsc::{TryRecvError, RecvTimeoutError};
 use single_value_channel;
 
@@ -68,7 +68,7 @@ impl ControllerOverseer {
         -> Arc<Vec<HashMap<Token, FrameData>>>
     {
         let last: Arc<Vec<_>> = Arc::new(stack.into());
-        self.last_stack_copy = Some(last.clone());
+        self.last_stack_copy = Some(Arc::clone(&last));
         last
     }
 }
@@ -90,7 +90,7 @@ impl Overseer for ControllerOverseer {
         let stack = { // kerfuffle to avoid cloning the stack when it hasn't changed
             if let Some(last) = self.last_stack_copy.take() {
                 if last.as_slice() == stack {
-                    self.last_stack_copy = Some(last.clone());
+                    self.last_stack_copy = Some(Arc::clone(&last));
                     last
                 }
                 else { self.replace_last_stack(stack) }
@@ -227,7 +227,7 @@ impl Controller {
 
     pub fn new_max_pause() -> Controller {
         // just a large amount of seconds, for some reason u64::MAX caused issues on windows
-        Controller::new(Duration::from_secs(::std::u32::MAX as u64))
+        Controller::new(Duration::from_secs(u64::from(u32::MAX)))
     }
 
     /// Modifies the pause time, the duration the interpreter will block for

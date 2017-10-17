@@ -316,7 +316,7 @@ impl<'a> Parser<'a> {
 
             let help_message = self.parse_fail_help()
                 .map(|msg| Cow::Owned(format!(", {}", msg)))
-                .unwrap_or("".into());
+                .unwrap_or_else(|| "".into());
 
             Err(BadderError::at(self.current_src_ref)
                 .describe(
@@ -325,7 +325,7 @@ impl<'a> Parser<'a> {
                         expected,
                         self.previous_token.as_ref()
                             .map(|t| Cow::Owned(format!(" to follow `{:?}`", t)))
-                            .unwrap_or("".into()),
+                            .unwrap_or_else(|| "".into()),
                         self.current_token.long_debug(),
                         help_message)))
         }
@@ -405,8 +405,7 @@ impl<'a> Parser<'a> {
             else {
                 match self.listref()? {
                     // dot calls handled later
-                    Err(ListParseEdgeCase::DotCall(list)) => list,
-                    Ok(Some(list)) => list,
+                    Err(ListParseEdgeCase::DotCall(list)) | Ok(Some(list)) => list,
                     Ok(None) => {
                         let id = self.consume_any(&[Id("identifier".into()), Num(0)])?;
                         if self.current_token == OpnBrace { // function call
@@ -944,18 +943,18 @@ impl<'a> Parser<'a> {
         where F: Fn(&Ast) -> bool
     {
         let mut all = vec![];
-        let mut line = self.indented_line(allow.clone())?;
+        let mut line = self.indented_line(Rc::clone(&allow))?;
 
         while match line { Ast::Empty(..) => false, ref l => predicate(l) } {
             if all.is_empty() {
                 Self::check_line_has_scope(&line, first_line_scope)?;
             }
-            if let (line, Some(ref prev_line)) = (&line, all.last()) {
+            if let (line, Some(prev_line)) = (&line, all.last()) {
                 Self::check_scope_change(prev_line, line)?;
             }
 
             all.push(line);
-            line = self.indented_line(allow.clone())?;
+            line = self.indented_line(Rc::clone(&allow))?;
         }
         self.unused_lines.push(line);
 

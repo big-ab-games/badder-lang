@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// `SourceRef`((`line_start`, `character_start`), (`line_end`, character_end`))
+/// `SourceRef`((`line_start`, `character_start`), (`line_end`, `character_end`))
 /// inclusive `character_start`, exclusive `character_end`
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SourceRef(pub (usize, usize), pub (usize, usize));

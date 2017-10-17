@@ -184,7 +184,7 @@ impl Token {
 
     pub fn id_str(&self) -> Option<&str> {
         if let Token::Id(ref inner) = *self {
-            Some(&inner)
+            Some(inner)
         }
         else { None }
     }

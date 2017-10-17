@@ -78,8 +78,7 @@ impl FrameData {
                             .map(|a| format!("{:?}",a))
                             .fold(String::new(), |all,n| all + &n)
                 ),
-            Sequence(..) => format!("{:?}", id),
-            BuiltinCallable(..) => format!("{:?}", id),
+            Sequence(..) | BuiltinCallable(..) => format!("{:?}", id),
             Ref(..) => format!("ref->{:?}", id),
             _ => "_".into(),
         }
@@ -419,7 +418,7 @@ impl<O: Overseer> Interpreter<O> {
 
             let (mut arg_ids, callable_block) = {
                 match self.stack[idx][id] {
-                    Callable(ref arg_ids, ref block) => (arg_ids.clone(), block.clone()),
+                    Callable(ref arg_ids, ref block) => (arg_ids.clone(), Arc::clone(block)),
                     _ => {
                         return parent_error(format!(
                             "Invalid reference to non callable `{:?}`",
@@ -650,7 +649,7 @@ impl<O: Overseer> Interpreter<O> {
                             .describe(Stage::Interpreter, desc)));
                     }
                 };
-                self.stack[top].insert(id.clone(), Callable(args.clone(), block.clone()));
+                self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block)));
                 Ok(0)
             },
             Ast::Call(ref id, ref args, ..) => {
@@ -790,7 +789,7 @@ impl<O: Overseer> Interpreter<O> {
                                 }
                                 Builtin::SeqRemove => {
                                     let index = convert_signed_index(arg1.unwrap(), v.len());
-                                    if v.len() == 0 {
+                                    if v.is_empty() {
                                         return parent_error(format!(
                                             "Invalid sequence index {} not in empty sequence",
                                             arg1.unwrap()
