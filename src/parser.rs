@@ -278,14 +278,17 @@ impl<'a> Parser<'a> {
         if let Ok((next_token, ..)) = lex.next_token() {
             match self.current_token {
                 Ass => match next_token {
-                    Gt => {
-                        Some("`=>` is not an operator did you mean `>=`?".into())
-                    }
-                    Lt => {
-                        Some("`=<` is not an operator did you mean `<=`?".into())
-                    }
+                    Gt => Some("`=>` is not an operator did you mean `>=`?".into()),
+                    Lt => Some("`=<` is not an operator did you mean `<=`?".into()),
                     _ => None
                 },
+                Not => match next_token {
+                    Gt => Some("`not >` is invalid, did you mean `<=`?".into()),
+                    GtEq => Some("`not >=` is invalid, did you mean `<`?".into()),
+                    Lt => Some("`not <` is invalid, did you mean `>=`?".into()),
+                    LtEq => Some("`not <=` is invalid, did you mean `>`?".into()),
+                    _ => None
+                }
                 _ => None,
             }
         }
@@ -1272,6 +1275,34 @@ mod helpful_error {
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`is` or `>`"), "error did not suggest `is` or `>`");
+    }
+
+    #[test]
+    fn not_greater_than() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "12 not > 11",
+        ].join("\n")).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
+        assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
+    }
+
+    #[test]
+    fn not_less_than_or_equal_to() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "12 not <= 11",
+        ].join("\n")).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
+        assert!(err.description.contains("`>`"), "error did not suggest `>`");
     }
 }
 
