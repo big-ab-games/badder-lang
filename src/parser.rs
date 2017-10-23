@@ -259,14 +259,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_fail_help(&self) -> Option<Cow<'static, str>> {
-        let prev_help: Option<Cow<'static, str>> = match self.current_token {
-            Pls if self.previous_token == Some(Pls) => {
-                Some("`++` is not an operator did you mean `+= 1`?".into())
-            }
-            ref token if token.is_binary_op() && self.previous_token == Some(Is) => {
+        let prev_help: Option<Cow<'static, str>> =
+            match (&self.previous_token, &self.current_token)
+        {
+            (&Some(Pls), &Pls) => Some("`++` is not an operator, did you mean `+= 1`?".into()),
+            (&Some(Is), ref token) if token.is_binary_op() => {
                 Some(format!("try using just `is` or `{:?}`.", token).into())
             }
-            _ => None,
+            _ => None
         };
 
         if prev_help.is_some() {
@@ -278,9 +278,17 @@ impl<'a> Parser<'a> {
         if let Ok((next_token, ..)) = lex.next_token() {
             match self.current_token {
                 Ass => match next_token {
-                    Gt => Some("`=>` is not an operator did you mean `>=`?".into()),
-                    Lt => Some("`=<` is not an operator did you mean `<=`?".into()),
-                    _ => None
+                    Gt => Some("`=>` is not an operator, did you mean `>=`?".into()),
+                    Lt => Some("`=<` is not an operator, did you mean `<=`?".into()),
+                    Ass => Some("`==` is not an operator, did you mean `is`?".into()),
+                    _ => {
+                        match self.previous_token {
+                            Some(Id(_)) | Some(Num(_)) => {
+                                Some("cannot assign here, did you mean `is`?".into())
+                            },
+                            _ => None
+                        }
+                    }
                 },
                 Not => match next_token {
                     Gt => Some("`not >` is invalid, did you mean `<=`?".into()),
@@ -1303,6 +1311,36 @@ mod helpful_error {
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
         assert!(err.description.contains("`>`"), "error did not suggest `>`");
+    }
+
+    #[test]
+    fn assignment_instead_of_is() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "if 12 = 11",
+            "    0",
+        ].join("\n")).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
+        assert!(err.description.contains("`is`"), "error did not suggest `is`");
+    }
+
+    #[test]
+    fn double_assignment_instead_of_is() {
+        let _ = pretty_env_logger::init();
+
+        let err = Parser::parse_str(&vec![
+            "if 12 == 11",
+            "    0",
+        ].join("\n")).expect_err("parse");
+
+        println!("Got Error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
+        assert!(err.description.contains("`is`"), "error did not suggest `is`");
     }
 }
 
