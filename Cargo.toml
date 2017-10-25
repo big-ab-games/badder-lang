@@ -5,7 +5,7 @@ authors = ["Alex Butler <alexheretic@gmail.com>"]
 
 [dependencies]
 log = "0.3"
-string_cache = "0.6"
+string_cache = "0.7"
 single_value_channel = "1"
 strsim = "0.6"
 

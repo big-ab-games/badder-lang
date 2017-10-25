@@ -353,8 +353,17 @@ impl<'a> Lexer<'a> {
                     self.next_char();
                 }
 
+                let hint = match spaces % 4 {
+                    1 => ", try removing 1 space.",
+                    3 => ", try adding 1 space.",
+                    _ => ", try adding or removing 2 spaces.",
+                };
+
                 return Err(BadderError::at(src_ref.up_to(self.cursor()))
-                    .describe(Stage::Lexer, "Invalid indent must be multiple of 4 spaces"));
+                    .describe(
+                        Stage::Lexer,
+                        format!("Invalid indent must be multiple of 4 spaces{}", hint),
+                    ));
             }
             return Ok((Indent(spaces / 4), src_ref.up_to(self.cursor())));
         }
