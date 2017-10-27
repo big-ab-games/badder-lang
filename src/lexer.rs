@@ -355,8 +355,8 @@ impl<'a> Lexer<'a> {
 
                 let hint = match spaces % 4 {
                     1 => ", try removing 1 space.",
-                    3 => ", try adding 1 space.",
-                    _ => ", try adding or removing 2 spaces.",
+                    3 => ", try removing 3 spaces.",
+                    _ => ", try removing 2 spaces.",
                 };
 
                 return Err(BadderError::at(src_ref.up_to(self.cursor()))
