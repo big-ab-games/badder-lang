@@ -8,6 +8,7 @@ log = "0.3"
 string_cache = "0.7"
 single_value_channel = "1"
 strsim = "0.6"
+ordermap = "0.3"
 
 [dev-dependencies]
 pretty_env_logger = "0.1"

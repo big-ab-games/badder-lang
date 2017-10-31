@@ -83,7 +83,12 @@ macro_rules! assert_stack {
                 println!("Actual stack {:?}", stack);
                 assert!(stack.len() > index, "Stack smaller than expected");
             }
-            assert_eq!(stack[index].get(&id), Some(&FrameData::Value($int)));
+            if let Some(&FrameData::Value(val, ..)) = stack[index].get(&id) {
+                assert_eq!(val, $int, "unexpected value for `{:?}`", id);
+            }
+            else {
+                assert!(false, "No value for `{:?}` on stack", id);
+            }
         )*
     }};
 }

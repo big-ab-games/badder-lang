@@ -10,11 +10,11 @@ pub struct Phase {
     pub id: u64,
     pub time: Instant,
     pub src: SourceRef,
-    /// most recent function call ref relavant to this Ast, None => top level code
+    /// most recent function call ref relavant to this Ast, empty => top level code
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
     unpaused: bool,
-    pub stack: Arc<Vec<HashMap<Token, FrameData>>>,
+    pub stack: Arc<Vec<OrderMap<Token, FrameData>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ struct ControllerOverseer {
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
     external_function_answer: mpsc::Receiver<Result<Int, String>>,
-    last_stack_copy: Option<Arc<Vec<HashMap<Token, FrameData>>>>,
+    last_stack_copy: Option<Arc<Vec<OrderMap<Token, FrameData>>>>,
 }
 
 fn interested_in(ast: &Ast) -> bool {
@@ -64,8 +64,8 @@ fn interested_in(ast: &Ast) -> bool {
 }
 
 impl ControllerOverseer {
-    fn replace_last_stack(&mut self, stack: &[HashMap<Token, FrameData>])
-        -> Arc<Vec<HashMap<Token, FrameData>>>
+    fn replace_last_stack(&mut self, stack: &[OrderMap<Token, FrameData>])
+        -> Arc<Vec<OrderMap<Token, FrameData>>>
     {
         let last: Arc<Vec<_>> = Arc::new(stack.into());
         self.last_stack_copy = Some(Arc::clone(&last));
@@ -75,7 +75,7 @@ impl ControllerOverseer {
 
 impl Overseer for ControllerOverseer {
     fn oversee(&mut self,
-               stack: &[HashMap<Token, FrameData>], // Cow?
+               stack: &[OrderMap<Token, FrameData>], // Cow?
                ast: &Ast,
                _current_scope: usize,
                _stack_key: StackKey) -> Result<(), ()> {
@@ -85,7 +85,7 @@ impl Overseer for ControllerOverseer {
 
         let id = self.next_id;
         let send_time = Instant::now();
-        self.next_id += 1;
+        self.next_id = id.overflowing_add(1).0;
 
         let stack = { // kerfuffle to avoid cloning the stack when it hasn't changed
             if let Some(last) = self.last_stack_copy.take() {
@@ -106,7 +106,7 @@ impl Overseer for ControllerOverseer {
             kind: PhaseKind::from(ast),
             unpaused: false,
             time: send_time,
-            stack: stack,
+            stack,
         })).expect("send");
 
         let mut recv = self.from_controller.try_recv();
@@ -134,7 +134,6 @@ impl Overseer for ControllerOverseer {
 
             let mut elapsed = send_time.elapsed();
             while elapsed < pause_time {
-                // warn!("elapsed {:?}, pause_time {:?}", elapsed, pause_time);
                 match self.from_controller.recv_timeout(pause_time - elapsed) {
                     Ok(Ok(i)) => if i == id {
                         return Ok(());
@@ -153,7 +152,7 @@ impl Overseer for ControllerOverseer {
     }
 
     fn oversee_after(&mut self,
-                     _stack: &[HashMap<Token, FrameData>],
+                     _stack: &[OrderMap<Token, FrameData>],
                      ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
             let _ = self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()));

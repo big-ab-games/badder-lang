@@ -2,6 +2,7 @@
 extern crate string_cache;
 extern crate single_value_channel;
 extern crate strsim;
+extern crate ordermap;
 
 mod common;
 mod lexer;
@@ -10,7 +11,7 @@ pub mod controller;
 
 use lexer::Token::*;
 use std::cmp::*;
-use std::collections::HashMap;
+use ordermap::OrderMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::iter::Iterator;
@@ -38,9 +39,9 @@ pub enum Builtin {
 
 #[derive(Clone, Hash, PartialEq)]
 pub enum FrameData {
-    Value(Int),
+    Value(Int, SourceRef),
     /// Callable(args, block)
-    Callable(Vec<Token>, Arc<Ast>),
+    Callable(Vec<Token>, Arc<Ast>, SourceRef),
     /// Callables built into the interpreter
     BuiltinCallable(Builtin),
     /// External function managed by the overseer
@@ -56,7 +57,7 @@ impl fmt::Debug for FrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self
         {
-            Value(x) => write!(f, "Value({})", x),
+            Value(x, ..) => write!(f, "Value({})", x),
             Callable(..) => write!(f, "Callable"),
             BuiltinCallable(..) => write!(f, "BuiltinCallable"),
             ExternalCallable => write!(f, "ExternalCallable"),
@@ -70,7 +71,7 @@ impl fmt::Debug for FrameData {
 impl FrameData {
     fn desc(&self, id: &Token) -> String {
         match *self {
-            Value(_) => format!("var {:?}", id),
+            Value(..) => format!("var {:?}", id),
             Callable(ref args, ..) =>
                 format!("{:?}({})",
                         id,
@@ -84,7 +85,7 @@ impl FrameData {
         }
     }
 
-    fn add_builtins_to(frame: &mut HashMap<Token, FrameData>) {
+    fn add_builtins_to(frame: &mut OrderMap<Token, FrameData>) {
         frame.insert(Id("size(s)".into()), BuiltinCallable(Builtin::Size));
         frame.insert(Id("add(sv)".into()), BuiltinCallable(Builtin::SeqAdd));
         frame.insert(Id("remove(sv)".into()), BuiltinCallable(Builtin::SeqRemove));
@@ -137,13 +138,13 @@ use InterpreterUpFlow::*;
 
 pub trait Overseer {
     fn oversee(&mut self,
-               stack: &[HashMap<Token, FrameData>],
+               stack: &[OrderMap<Token, FrameData>],
                ast: &Ast,
                current_scope: usize,
                stack_key: StackKey) -> Result<(), ()>;
 
     fn oversee_after(&mut self,
-                     _stack: &[HashMap<Token, FrameData>],
+                     _stack: &[OrderMap<Token, FrameData>],
                      _ast: &Ast) {}
 
     fn external_function_signatures(&self) -> &[Token];
@@ -155,7 +156,7 @@ pub struct NoOverseer;
 
 impl Overseer for NoOverseer {
     fn oversee(&mut self,
-               _stack: &[HashMap<Token, FrameData>],
+               _stack: &[OrderMap<Token, FrameData>],
                _: &Ast,
                _: usize,
                _: StackKey) -> Result<(), ()> {
@@ -173,7 +174,7 @@ impl Overseer for NoOverseer {
 
 #[derive(Debug)]
 pub struct Interpreter<O: Overseer> {
-    stack: Vec<HashMap<Token, FrameData>>,
+    stack: Vec<OrderMap<Token, FrameData>>,
     overseer: O
 }
 
@@ -202,7 +203,7 @@ impl Default for Interpreter<NoOverseer> {
 
 impl<O: Overseer> Interpreter<O> {
     pub fn new(overseer: O) -> Interpreter<O> {
-        let mut init_frame = HashMap::new();
+        let mut init_frame = OrderMap::new();
         for ext_fun in overseer.external_function_signatures() {
             init_frame.insert(ext_fun.clone(), FrameData::ExternalCallable);
         }
@@ -333,7 +334,7 @@ impl<O: Overseer> Interpreter<O> {
         let loop_token = Id("#loop".into());
         self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
         loop {
-            self.stack.push(HashMap::new());
+            self.stack.push(OrderMap::new());
             let eval = self.eval(block, current_scope + 1, stack_key);
             self.stack.pop();
             match eval {
@@ -355,6 +356,7 @@ impl<O: Overseer> Interpreter<O> {
                    item_id: &Token,
                    list_expr: &Ast,
                    block: &Ast,
+                   src: SourceRef,
                    current_scope: usize,
                    stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
@@ -367,11 +369,11 @@ impl<O: Overseer> Interpreter<O> {
         self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
         let mut index = 0;
         while index < list.len() {
-            let mut frame = HashMap::new();
+            let mut frame = OrderMap::new();
             if let Some(ref id) = *idx_id {
-                frame.insert(id.clone(), Value(index as i32));
+                frame.insert(id.clone(), Value(index as i32, src));
             }
-            frame.insert(item_id.clone(), Value(list[index]));
+            frame.insert(item_id.clone(), Value(list[index], src));
             self.stack.push(frame);
             let eval = self.eval(block, current_scope + 1, stack_key);
             self.stack.pop();
@@ -416,20 +418,22 @@ impl<O: Overseer> Interpreter<O> {
                 return self.call_external(id.clone(), evaluated_args);
             }
 
-            let (mut arg_ids, callable_block) = {
+            let (mut arg_ids, callable_block, src) = {
                 match self.stack[idx][id] {
-                    Callable(ref arg_ids, ref block) => (arg_ids.clone(), Arc::clone(block)),
+                    Callable(ref arg_ids, ref block, src) => {
+                        (arg_ids.clone(), Arc::clone(block), src)
+                    }
                     _ => {
                         return parent_error(format!(
                             "Invalid reference to non callable `{:?}`",
                             id
                         ))
-                    },
+                    }
                 }
             };
 
             // construct new function call stack frame
-            let mut f_frame = HashMap::new();
+            let mut f_frame = OrderMap::new();
             for i in 0..args.len() {
                 let data = match args[i] {
                     ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?),
@@ -441,7 +445,7 @@ impl<O: Overseer> Interpreter<O> {
                             return parent_error(self.unknown_id_err(id, stack_key));
                         }
                     },
-                    ref ast => Value(eval!(ast)?),
+                    ref ast => Value(eval!(ast)?, src),
                 };
                 f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
             }
@@ -574,16 +578,20 @@ impl<O: Overseer> Interpreter<O> {
                 0 => 1,
                 _ => 0,
             }),
-            Ast::Assign(ref id, ref expr, ..) => {
+            Ast::Assign(ref id, ref expr, src) => {
                 let v = eval!(expr)?;
-                self.stack[current_scope].insert(id.clone(), Value(v));
+                self.stack[current_scope].insert(id.clone(), Value(v, src));
                 Ok(v)
             },
             Ast::Reassign(ref id, ref expr, ..) => {
                 // reassign to any parent scope
                 if let Some(idx) = highest_frame_idx!(id) {
                     let v = eval!(expr)?;
-                    *self.stack[idx].get_mut(id).unwrap() = Value(v);
+                    let ass_src = match self.stack[idx][id] {
+                        Value(.., src) => src,
+                        _ => unreachable!()
+                    };
+                    *self.stack[idx].get_mut(id).unwrap() = Value(v, ass_src);
                     Ok(v)
                 }
                 else {
@@ -594,7 +602,7 @@ impl<O: Overseer> Interpreter<O> {
             Ast::Refer(ref id, ..) => {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
-                        Value(v) => Ok(v),
+                        Value(v, ..) => Ok(v),
                         _ => parent_error(format!(
                             "Invalid reference to non number `{:?}`",
                             id)),
@@ -610,7 +618,7 @@ impl<O: Overseer> Interpreter<O> {
                     }
                 },
                 _ => {
-                    self.stack.push(HashMap::new());
+                    self.stack.push(OrderMap::new());
                     let eval = self.eval(block, current_scope + 1, stack_key);
                     self.stack.pop();
                     eval?;
@@ -620,8 +628,8 @@ impl<O: Overseer> Interpreter<O> {
             Ast::While(ref expr, ref block, ..) => {
                 self.eval_while(expr, block, current_scope, stack_key)
             },
-            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, ..) => {
-                self.eval_for_in(idx_id, item_id, list_expr, block, current_scope, stack_key)
+            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => {
+                self.eval_for_in(idx_id, item_id, list_expr, block, src, current_scope, stack_key)
             },
             Ast::LoopNav(ref token, ..) => {
                 let loop_token = Id("#loop".into());
@@ -636,7 +644,7 @@ impl<O: Overseer> Interpreter<O> {
                     parent_error(format!("Invalid use of loop nav `{:?}`", token))
                 }
             },
-            Ast::AssignFun(ref id, ref args, ref block, ..) => {
+            Ast::AssignFun(ref id, ref args, ref block, src) => {
                 let top = self.stack.len() - 1;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Callable(..)) => (), // overwrite
@@ -649,7 +657,7 @@ impl<O: Overseer> Interpreter<O> {
                             .describe(Stage::Interpreter, desc)));
                     }
                 };
-                self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block)));
+                self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block), src));
                 Ok(0)
             },
             Ast::Call(ref id, ref args, ..) => {

@@ -263,7 +263,7 @@ impl<'a> Parser<'a> {
             match (&self.previous_token, &self.current_token)
         {
             (&Some(Pls), &Pls) => Some("`++` is not an operator, did you mean `+= 1`?".into()),
-            (&Some(Is), ref token) if token.is_binary_op() => {
+            (&Some(Is), token) if token.is_binary_op() => {
                 Some(format!("try using just `is` or `{:?}`.", token).into())
             }
             _ => None
