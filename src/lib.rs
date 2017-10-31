@@ -49,7 +49,7 @@ pub enum FrameData {
     ///Ref(frame_index, id)
     Ref(usize, Token),
     /// Sequence of values
-    Sequence(Vec<Int>),
+    Sequence(Vec<Int>, SourceRef),
     LoopMarker,
 }
 
@@ -61,7 +61,7 @@ impl fmt::Debug for FrameData {
             Callable(..) => write!(f, "Callable"),
             BuiltinCallable(..) => write!(f, "BuiltinCallable"),
             ExternalCallable => write!(f, "ExternalCallable"),
-            Sequence(ref vals) => write!(f, "Sequence({:?})", vals),
+            Sequence(ref vals, ..) => write!(f, "Sequence({:?})", vals),
             Ref(i, ref t) => write!(f, "Ref([{}]:{:?})", i, t),
             LoopMarker => write!(f, "LoopMarker"),
         }
@@ -436,7 +436,7 @@ impl<O: Overseer> Interpreter<O> {
             let mut f_frame = OrderMap::new();
             for i in 0..args.len() {
                 let data = match args[i] {
-                    ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?),
+                    ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?, src),
                     Ast::ReferSeq(ref id, ..) => {
                         if let Some(idx) = highest_frame_idx!(id) {
                             Ref(idx, id.clone())
@@ -482,7 +482,7 @@ impl<O: Overseer> Interpreter<O> {
             }
 
             let seq_len = match self.stack[idx][&seq_id] {
-                Sequence(ref v) => Ok(v.len()),
+                Sequence(ref v, ..) => Ok(v.len()),
                 ref data => parent_error(format!(
                     "Invalid sequence index reference to non-sequence `{}`",
                     data.desc(&seq_id)
@@ -503,7 +503,7 @@ impl<O: Overseer> Interpreter<O> {
                     seq_len));
             }
             Ok(match self.stack[idx][&seq_id] {
-                Sequence(ref vec) => vec[index],
+                Sequence(ref vec, ..) => vec[index],
                 _ => unreachable!(),
             })
         }
@@ -527,7 +527,7 @@ impl<O: Overseer> Interpreter<O> {
             }
 
             let seq_len = match self.stack[idx][&seq_id] {
-                Sequence(ref v) => Ok(v.len()),
+                Sequence(ref v, ..) => Ok(v.len()),
                 ref data => parent_error(format!(
                     "Invalid sequence index reassignment to non-sequence `{}`",
                     data.desc(&seq_id)
@@ -542,7 +542,7 @@ impl<O: Overseer> Interpreter<O> {
             }
             let new_val = eval!(expr)?;
             match self.stack[idx].get_mut(&seq_id) {
-                Some(&mut Sequence(ref mut vec)) => vec[index] = new_val,
+                Some(&mut Sequence(ref mut vec, ..)) => vec[index] = new_val,
                 _ => unreachable!(),
             }
             Ok(0)
@@ -670,7 +670,7 @@ impl<O: Overseer> Interpreter<O> {
             Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr, ..) => {
                 self.eval_reassign_seq_index(seq_id, index_expr, expr, current_scope, stack_key)
             },
-            Ast::AssignSeq(ref id, ref list, ..) => {
+            Ast::AssignSeq(ref id, ref list, src) => {
                 let v = eval_seq!(list)?;
                 match self.stack[current_scope].get(id) {
                     None | Some(&Sequence(..)) => (), // overwrite
@@ -683,7 +683,7 @@ impl<O: Overseer> Interpreter<O> {
                             .describe(Stage::Interpreter, desc)));
                     }
                 };
-                self.stack[current_scope].insert(id.clone(), Sequence(v));
+                self.stack[current_scope].insert(id.clone(), Sequence(v, src));
                 Ok(0)
             },
             Ast::Line(scope, ref expr, ..) => {
@@ -743,7 +743,7 @@ impl<O: Overseer> Interpreter<O> {
                     }
 
                     match self.stack[idx][&id] {
-                        Sequence(ref v) => Ok(v.clone()),
+                        Sequence(ref v, ..) => Ok(v.clone()),
                         ref data => parent_error(format!(
                             "Invalid sequence referal to non-sequence `{}`",
                             data.desc(&id)
@@ -786,7 +786,7 @@ impl<O: Overseer> Interpreter<O> {
                         id = n_id.clone();
                     }
                     match self.stack[idx].get_mut(&id) {
-                        Some(&mut Sequence(ref mut v)) => {
+                        Some(&mut Sequence(ref mut v, ..)) => {
                             match builtin {
                                 Builtin::Size => {
                                     Ok(v.len() as i32)
