@@ -453,7 +453,15 @@ impl<'a> Parser<'a> {
         let src = self.current_src_ref;
         if self.current_token == Sub {
             self.next_token()?;
-            return Ok(Ast::LeftUnaryOp(Sub, self.dotcall()?.into(), src.up_to_end_of(self.current_src_ref)));
+            let negated = self.dotcall()?;
+            let src = src.up_to_end_of(self.current_src_ref);
+            return Ok(if let Ast::Num(Num(n), _) = negated {
+                // Simplify AST for negated number literals
+                Ast::Num(Num(-n), src)
+            }
+            else {
+                Ast::LeftUnaryOp(Sub, negated.into(), src)
+            });
         }
         self.dotcall()
     }

@@ -17,18 +17,21 @@ pub struct Phase {
     pub stack: Arc<Vec<OrderMap<Token, FrameData>>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PhaseKind {
     FunctionCall,
+    Assignment,
     Other,
 }
 
 impl PhaseKind {
     fn from(ast: &Ast) -> PhaseKind {
-        if let Ast::Call(..) = *ast {
-            PhaseKind::FunctionCall
+        match *ast {
+            Ast::Call(..) => PhaseKind::FunctionCall,
+            Ast::Assign(..) | Ast::AssignFun(..) | Ast::AssignSeq(..) => PhaseKind::Assignment,
+
+            _ => PhaseKind::Other,
         }
-        else { PhaseKind::Other }
     }
 }
 
@@ -189,6 +192,7 @@ pub struct Controller {
     result: Option<Res<Int>>,
     current_external_call: Option<ExternalCall>,
     external_function_ids: Vec<Token>,
+    run_stats: RunStats,
 
     /// #cancel() has been called this run
     cancelled: bool,
@@ -210,6 +214,8 @@ impl Controller {
             result: None,
             current_external_call: None,
             external_function_ids: Vec::new(),
+            run_stats: RunStats::default(),
+
             cancelled: false,
             from_overseer: mpsc::channel().1,
             execution_result: mpsc::channel().1,
@@ -267,6 +273,10 @@ impl Controller {
         if self.cancelled { None } else { self.current_phase.clone() }
     }
 
+    pub fn run_stats(&self) -> &RunStats {
+        &self.run_stats
+    }
+
     /// Returns result of execution
     pub fn result(&self) -> Option<&Res<Int>> {
         self.result.as_ref()
@@ -304,6 +314,9 @@ impl Controller {
                     phase.called_from = self.current_call_info();
                     if phase.kind == PhaseKind::FunctionCall {
                         self.fun_call_history.push(phase.src)
+                    }
+                    if !self.cancelled {
+                        self.run_stats.consider(&phase);
                     }
                     self.current_phase = Some(phase);
                 },
@@ -372,6 +385,7 @@ impl Controller {
         self.fun_call_history.clear();
         self.current_external_call = None;
         self.cancelled = false;
+        self.run_stats = RunStats::default();
 
         let external_function_ids = self.external_function_ids.clone();
 
@@ -402,6 +416,30 @@ impl ExternalCall {
         match self.id {
             Token::Id(ref s) => s,
             _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RunStats {
+    /// source_ref -> evaluation count
+    pub eval_counts: OrderMap<SourceRef, usize>,
+    last_phase: Option<u64>,
+}
+
+impl RunStats {
+    fn consider(&mut self, phase: &Phase) {
+        if phase.kind != PhaseKind::Assignment {
+            if let Some(id) = self.last_phase {
+                if id != phase.id {
+                    *(self.eval_counts.entry(phase.src).or_insert(0)) += 1;
+                }
+            }
+            else {
+                *(self.eval_counts.entry(phase.src).or_insert(0)) += 1;
+            }
+
+            self.last_phase = Some(phase.id);
         }
     }
 }
