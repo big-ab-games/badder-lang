@@ -1002,7 +1002,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod parser_test {
-    extern crate pretty_env_logger;
+    extern crate env_logger;
 
     use super::*;
 
@@ -1086,7 +1086,7 @@ mod parser_test {
 
     #[test]
     fn seq_src_ref() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let mut ast = Parser::parse_str("seq some_id[] = 1345, 2").unwrap();
 
@@ -1110,7 +1110,7 @@ mod parser_test {
 
     #[test]
     fn assign_var() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let ast = Parser::parse_str(&vec![
             "var abc",
@@ -1132,7 +1132,7 @@ mod parser_test {
 
     #[test]
     fn if_else_src_ref() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let ast = Parser::parse_str(&vec![
             "var a = 123",
@@ -1189,7 +1189,7 @@ mod parser_test {
 
     #[test]
     fn fun_src_ref() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let ast = Parser::parse_str(&vec![
             "fun double(x)",
@@ -1214,7 +1214,7 @@ mod parser_test {
 
     #[test]
     fn parse_error() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "fum double(x)", // `fun` misspelled -> id
@@ -1230,13 +1230,13 @@ mod parser_test {
 
 #[cfg(test)]
 mod helpful_error {
-    extern crate pretty_env_logger;
+    extern crate env_logger;
 
     use super::*;
 
     #[test]
     fn reversed_greater_or_equal() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "if 12 => 11", // `=>` misspelled
@@ -1251,7 +1251,7 @@ mod helpful_error {
 
     #[test]
     fn reversed_less_than_or_equal() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "if 12 =< 11", // `=>` misspelled
@@ -1266,7 +1266,7 @@ mod helpful_error {
 
     #[test]
     fn var_plus_plus() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "var x",
@@ -1281,7 +1281,7 @@ mod helpful_error {
 
     #[test]
     fn is_is_greater_than() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "12 is > 11",
@@ -1295,7 +1295,7 @@ mod helpful_error {
 
     #[test]
     fn not_greater_than() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "12 not > 11",
@@ -1309,7 +1309,7 @@ mod helpful_error {
 
     #[test]
     fn not_less_than_or_equal_to() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "12 not <= 11",
@@ -1323,7 +1323,7 @@ mod helpful_error {
 
     #[test]
     fn assignment_instead_of_is() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "if 12 = 11",
@@ -1338,7 +1338,7 @@ mod helpful_error {
 
     #[test]
     fn double_assignment_instead_of_is() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let err = Parser::parse_str(&vec![
             "if 12 == 11",
@@ -1355,13 +1355,13 @@ mod helpful_error {
 // reproductions of encountered issues/bugs
 #[cfg(test)]
 mod issues {
-    extern crate pretty_env_logger;
+    extern crate env_logger;
 
     use super::*;
 
     #[test]
     fn return_in_function_body_with_loops() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
         Parser::parse_str(&vec![
             "fun some_func()",
             "    for i in 1,2,3",
@@ -1375,7 +1375,7 @@ mod issues {
 
     #[test]
     fn seq_nested_dot_calling() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
         Parser::parse_str(&vec![
             "fun plus(a1, a2)",
             "    a1 + a2",
@@ -1387,7 +1387,7 @@ mod issues {
 
     #[test]
     fn over_indenting() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
         let err = Parser::parse_str(&vec![
             "var x",
             "    x = 1",
@@ -1403,7 +1403,7 @@ mod issues {
 
     #[test]
     fn over_indenting_after_if() {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
         let err = Parser::parse_str(&vec![
             "var x",
             "if x is 0",

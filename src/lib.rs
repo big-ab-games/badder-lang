@@ -860,7 +860,7 @@ impl<O: Overseer> Interpreter<O> {
 #[cfg(test)]
 #[macro_use]
 mod util {
-    extern crate pretty_env_logger;
+    extern crate env_logger;
 
     use super::*;
     use std::sync::mpsc;
@@ -898,7 +898,7 @@ mod util {
     }
 
     pub fn result(code: &str, debug_output: bool) -> Int {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         if debug_output {
             print_program_debug(code).unwrap();
@@ -907,7 +907,7 @@ mod util {
     }
 
     pub fn error(code: &str) -> BadderError {
-        let _ = pretty_env_logger::init();
+        let _ = env_logger::try_init();
 
         let out = eval_within(code, Duration::from_secs(1));
         if out.is_ok() {

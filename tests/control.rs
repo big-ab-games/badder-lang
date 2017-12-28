@@ -1,6 +1,6 @@
 #[macro_use] extern crate assert_matches;
 extern crate badder_lang;
-extern crate pretty_env_logger;
+extern crate env_logger;
 
 use badder_lang::*;
 use badder_lang::controller::*;
@@ -37,7 +37,7 @@ var plus1 = loops + 1";
 
 #[test]
 fn controller_step_test() {
-    let _ = pretty_env_logger::init();
+    let _ = env_logger::try_init();
 
     let ast = Parser::parse_str(SRC).expect("parse");
 
@@ -104,7 +104,7 @@ a + 1  # 9";
 
 #[test]
 fn phase_stack() {
-    let _ = pretty_env_logger::init();
+    let _ = env_logger::try_init();
 
     let ast = Parser::parse_str(STACK_SRC).expect("parse");
 
@@ -146,7 +146,7 @@ a.plus_one().external_sum(a123)
 
 #[test]
 fn external_functions_num_args() {
-    let _ = pretty_env_logger::init();
+    let _ = env_logger::try_init();
     let start = Instant::now();
 
     let ast = Parser::parse_str(EXTERNAL_FUN_SRC).expect("parse");
@@ -198,7 +198,7 @@ do_b()
 
 #[test]
 fn called_from_info() {
-    let _ = pretty_env_logger::init();
+    let _ = env_logger::try_init();
     let ast = Parser::parse_str(CALLED_FROM_SRC).expect("parse");
 
     macro_rules! assert_called_from_line {
