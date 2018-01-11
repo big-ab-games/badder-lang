@@ -210,6 +210,82 @@ impl Ast {
             Empty(.., src) => src
         }
     }
+
+    /// Returns if Num or `or`/`and`/`not` expression of Nums
+    fn is_pure_numeric_expr(&self) -> bool {
+        match *self {
+            Ast::Num(..) => true,
+            Ast::BinOp(And, ref left, ref right, ..) |
+            Ast::BinOp(Or, ref left, ref right, ..) =>
+            {
+                left.is_pure_numeric_expr() && right.is_pure_numeric_expr()
+            }
+            Ast::LeftUnaryOp(Not, ref ast, ..) => ast.is_pure_numeric_expr(),
+            _ => false
+        }
+    }
+
+    fn extract_num(&self) -> Option<i32> {
+        match *self {
+            Ast::Num(Num(n), ..) => Some(n),
+            _ => None
+        }
+    }
+
+    fn extract_ref(&self) -> Option<Atom> {
+        match *self {
+            Ast::Refer(Id(ref id), ..) => Some(id.clone()),
+            _ => None
+        }
+    }
+
+    fn extract_ref_is_num(&self) -> Option<(Atom, i32)> {
+        if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
+            if let (Some(id), Some(n)) = (left.extract_ref(), right.extract_num()) {
+                return Some((id, n))
+            }
+        }
+        None
+    }
+
+    fn validate_bin_op(&self) -> Res<()> {
+        match *self {
+            Ast::BinOp(And, ref left, ref right, src)
+            | Ast::BinOp(Or, ref left, ref right, src) => {
+                let lhs_numeric = left.is_pure_numeric_expr();
+                let rhs_numeric = right.is_pure_numeric_expr();
+                if lhs_numeric && !rhs_numeric || !lhs_numeric && rhs_numeric {
+                    let and_or = if let Ast::BinOp(Or, ..) = *self { "or" } else { "and" };
+
+                    let mut msg = format!(
+                        "`{lhs} {op} {rhs}` misuse, cannot mix number literals & expressions.",
+                        lhs = if lhs_numeric { "NUM" } else { "EXPR" },
+                        op = and_or,
+                        rhs = if rhs_numeric { "NUM" } else { "EXPR" },
+                    );
+
+                    // try to help with common `x is 1 or 2` issue
+                    if rhs_numeric {
+                        if let (Some((id, n)), Some(rhs)) =
+                            (left.extract_ref_is_num(), right.extract_num())
+                        {
+                            msg.push_str(&format!(
+                                "\nDid you mean `{id} is {n} {op} {id} is {rhs}`?",
+                                id = id,
+                                n = n,
+                                op = and_or,
+                                rhs = rhs,
+                            ));
+                        }
+                    }
+
+                    return Err(BadderError::at(src).describe(Stage::Parser, msg));
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 #[inline]
@@ -519,6 +595,7 @@ impl<'a> Parser<'a> {
         let mut out = self.inversed()?;
         while self.consume_maybe(And)?.is_some() {
             out = Ast::bin_op(And, out, self.inversed()?);
+            out.validate_bin_op()?;
         }
         Ok(out)
     }
@@ -527,6 +604,7 @@ impl<'a> Parser<'a> {
         let mut out = self.anded()?;
         while self.consume_maybe(Or)?.is_some() {
             out = Ast::bin_op(Or, out, self.anded()?);
+            out.validate_bin_op()?;
         }
         Ok(out)
     }
@@ -1221,7 +1299,7 @@ mod parser_test {
             "    return x * 2"].join("\n")
         ).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert!(err.description.contains("double"));
         assert_eq!(err.src, SourceRef((1, 5), (1, 11)));
@@ -1243,7 +1321,7 @@ mod helpful_error {
             "    0"].join("\n")
         ).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`>=`"), "error did not suggest `>=`");
@@ -1258,7 +1336,7 @@ mod helpful_error {
             "    0"].join("\n")
         ).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
@@ -1273,7 +1351,7 @@ mod helpful_error {
             "x++"].join("\n")
         ).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((2, 3), (2, 4)));
         assert!(err.description.contains("`+= 1`"), "error did not suggest `+= 1`");
@@ -1287,7 +1365,7 @@ mod helpful_error {
             "12 is > 11",
         ].join("\n")).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`is` or `>`"), "error did not suggest `is` or `>`");
@@ -1301,7 +1379,7 @@ mod helpful_error {
             "12 not > 11",
         ].join("\n")).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
         assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
@@ -1315,7 +1393,7 @@ mod helpful_error {
             "12 not <= 11",
         ].join("\n")).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
         assert!(err.description.contains("`>`"), "error did not suggest `>`");
@@ -1330,7 +1408,7 @@ mod helpful_error {
             "    0",
         ].join("\n")).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`is`"), "error did not suggest `is`");
@@ -1345,7 +1423,7 @@ mod helpful_error {
             "    0",
         ].join("\n")).expect_err("parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`is`"), "error did not suggest `is`");
@@ -1395,7 +1473,7 @@ mod issues {
         ].join("\n"))
             .expect_err("did not fail parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((2, 1), (2, 5)));
         assert!(err.description.contains("indent"), "error did contain 'indent'");
@@ -1411,9 +1489,37 @@ mod issues {
         ].join("\n"))
             .expect_err("did not fail parse");
 
-        println!("Got Error: {:?}", err);
+        println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((3, 1), (3, 13)));
         assert!(err.description.contains("indent"), "error did contain 'indent'");
+    }
+
+    #[test]
+    fn boolean_mix_expr_number_literal() {
+        let _ = env_logger::try_init();
+        let err = Parser::parse_str(&vec![
+            "var x = 4",
+            "if x is 1 or 2", // misuse of boolean operator
+            "    x += 1",
+            "x",
+        ].join("\n")).expect_err("did not fail parse");
+
+        println!("Got error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((2, 4), (2, 15)));
+        assert!(err.description.contains("or"));
+
+        let err = Parser::parse_str(&vec![
+            "var x = 4",
+            "if 2 or x is 1 and 3", // misuse of boolean operator
+            "    x += 1",
+            "x",
+        ].join("\n")).expect_err("did not fail parse");
+
+        println!("Got error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((2, 9), (2, 21)));
+        assert!(err.description.contains("and"));
     }
 }
