@@ -17,7 +17,7 @@ use std::fmt;
 use std::iter::Iterator;
 use std::mem;
 use std::sync::Arc;
-use std::usize;
+use std::{usize, i32};
 use common::*;
 use strsim::damerau_levenshtein as str_dist;
 
@@ -287,18 +287,21 @@ impl<O: Overseer> Interpreter<O> {
                    current_scope: usize,
                    stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
+        macro_rules! unwrap_checked {
+            ($c:expr) => { $c.map(|v| Ok(v)).unwrap_or_else(|| parent_error("overflow")) }
+        }
 
         match *token {
-            Pls => Ok(eval!(left)? + eval!(right)?),
-            Sub => Ok(eval!(left)? - eval!(right)?),
-            Mul => Ok(eval!(left)? * eval!(right)?),
-            Mod => Ok(eval!(left)? % eval!(right)?),
-            Div => {
-                match eval!(right)? {
-                    0 => parent_error("Cannot divide by zero"),
-                    divisor => Ok(eval!(left)? / divisor),
+            Pls => unwrap_checked!(eval!(left)?.checked_add(eval!(right)?)),
+            Sub => unwrap_checked!(eval!(left)?.checked_sub(eval!(right)?)),
+            Mul => unwrap_checked!(eval!(left)?.checked_mul(eval!(right)?)),
+            Mod | Div => {
+                match (eval!(right)?, token) {
+                    (0, _) => parent_error("Cannot divide by zero"),
+                    (divisor, &Div) => unwrap_checked!(eval!(left)?.checked_div(divisor)),
+                    (divisor, _) => unwrap_checked!(eval!(left)?.checked_rem(divisor)),
                 }
-            },
+            }
             And => {
                 match eval!(left)? {
                     0 => Ok(0),
@@ -792,6 +795,11 @@ impl<O: Overseer> Interpreter<O> {
                                     Ok(v.len() as i32)
                                 },
                                 Builtin::SeqAdd => {
+                                    if v.len() == (i32::MAX - 1) as usize {
+                                        return parent_error(
+                                            "`add(sv)` failed, sequence is max size"
+                                        );
+                                    }
                                     v.push(arg1.unwrap());
                                     Ok(0)
                                 }
