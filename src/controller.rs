@@ -1,8 +1,8 @@
 use super::*;
 use std::time::*;
 use std::sync::mpsc;
-use std::{u32, u64, thread};
-use std::sync::mpsc::{TryRecvError, RecvTimeoutError};
+use std::{thread, u32, u64};
+use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use single_value_channel;
 
 #[derive(Clone, Debug)]
@@ -55,21 +55,17 @@ struct ControllerOverseer {
 fn interested_in(ast: &Ast) -> bool {
     use Ast::*;
     match *ast {
-        LinePair(..) |
-        Line(..) |
-        Empty(..) |
-        Num(..) |
-        ReferSeq(..) |
-        ReferSeqIndex(..) |
-        Refer(..) => false,
-        _ => true
+        LinePair(..) | Line(..) | Empty(..) | Num(..) | ReferSeq(..) | ReferSeqIndex(..)
+        | Refer(..) => false,
+        _ => true,
     }
 }
 
 impl ControllerOverseer {
-    fn replace_last_stack(&mut self, stack: &[OrderMap<Token, FrameData>])
-        -> Arc<Vec<OrderMap<Token, FrameData>>>
-    {
+    fn replace_last_stack(
+        &mut self,
+        stack: &[OrderMap<Token, FrameData>],
+    ) -> Arc<Vec<OrderMap<Token, FrameData>>> {
         let last: Arc<Vec<_>> = Arc::new(stack.into());
         self.last_stack_copy = Some(Arc::clone(&last));
         last
@@ -77,11 +73,13 @@ impl ControllerOverseer {
 }
 
 impl Overseer for ControllerOverseer {
-    fn oversee(&mut self,
-               stack: &[OrderMap<Token, FrameData>], // Cow?
-               ast: &Ast,
-               _current_scope: usize,
-               _stack_key: StackKey) -> Result<(), ()> {
+    fn oversee(
+        &mut self,
+        stack: &[OrderMap<Token, FrameData>], // Cow?
+        ast: &Ast,
+        _current_scope: usize,
+        _stack_key: StackKey,
+    ) -> Result<(), ()> {
         if !interested_in(ast) {
             return Ok(());
         }
@@ -90,27 +88,34 @@ impl Overseer for ControllerOverseer {
         let send_time = Instant::now();
         self.next_id = id.overflowing_add(1).0;
 
-        let stack = { // kerfuffle to avoid cloning the stack when it hasn't changed
+        let stack = {
+            // kerfuffle to avoid cloning the stack when it hasn't changed
             if let Some(last) = self.last_stack_copy.take() {
                 if last.as_slice() == stack {
                     self.last_stack_copy = Some(Arc::clone(&last));
                     last
                 }
-                else { self.replace_last_stack(stack) }
+                else {
+                    self.replace_last_stack(stack)
+                }
             }
-            else { self.replace_last_stack(stack) }
+            else {
+                self.replace_last_stack(stack)
+            }
         };
 
         trace!("ControllerOverseer sending: {:?} {:?}", ast.src(), ast);
-        self.to_controller.send(OverseerUpdate::Phase(Phase {
-            id,
-            src: ast.src(),
-            called_from: Vec::new(), // unknown
-            kind: PhaseKind::from(ast),
-            unpaused: false,
-            time: send_time,
-            stack,
-        })).expect("send");
+        self.to_controller
+            .send(OverseerUpdate::Phase(Phase {
+                id,
+                src: ast.src(),
+                called_from: Vec::new(), // unknown
+                kind: PhaseKind::from(ast),
+                unpaused: false,
+                time: send_time,
+                stack,
+            }))
+            .expect("send");
 
         let mut recv = self.from_controller.try_recv();
         while recv != Err(TryRecvError::Empty) {
@@ -120,9 +125,9 @@ impl Overseer for ControllerOverseer {
                 },
                 Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
                     debug!("ControllerOverseer cancelling: {:?} {:?}", ast.src(), ast);
-                    return Err(())
-                },
-                _ => ()
+                    return Err(());
+                }
+                _ => (),
             }
             recv = self.from_controller.try_recv();
         }
@@ -143,8 +148,8 @@ impl Overseer for ControllerOverseer {
                     },
                     Ok(Err(_)) | Err(RecvTimeoutError::Disconnected) => {
                         debug!("ControllerOverseer cancelling: {:?} {:?}", ast.src(), ast);
-                        return Err(())
-                    },
+                        return Err(());
+                    }
                     _ => (),
                 };
 
@@ -154,11 +159,10 @@ impl Overseer for ControllerOverseer {
         }
     }
 
-    fn oversee_after(&mut self,
-                     _stack: &[OrderMap<Token, FrameData>],
-                     ast: &Ast) {
+    fn oversee_after(&mut self, _stack: &[OrderMap<Token, FrameData>], ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
-            let _ = self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()));
+            let _ = self.to_controller
+                .send(OverseerUpdate::FinishedFunCall(id.clone()));
         }
     }
 
@@ -167,11 +171,13 @@ impl Overseer for ControllerOverseer {
     }
 
     fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String> {
-        debug!("ControllerOverseer awaiting answer: {:?}, args {:?}", id, args);
-        self.external_function_call.send(ExternalCall {
-            id: id,
-            args: args,
-        }).expect("send");
+        debug!(
+            "ControllerOverseer awaiting answer: {:?}, args {:?}",
+            id, args
+        );
+        self.external_function_call
+            .send(ExternalCall { id, args })
+            .expect("send");
 
         // block until answer received
         match self.external_function_answer.recv() {
@@ -251,7 +257,12 @@ impl Controller {
     /// Unblocks current waiting phase's execution, if it is blocked.
     /// Requires a recent (in terms of set pause_time) call to #refresh() to be valid
     pub fn unpause(&mut self) {
-        if let Some(Phase{ id, unpaused: false, .. }) = self.current_phase {
+        if let Some(Phase {
+            id,
+            unpaused: false,
+            ..
+        }) = self.current_phase
+        {
             // ignore errors as send can happen after execution finishes
             let _ = self.to_overseer.send(Ok(id));
             self.current_phase.as_mut().unwrap().unpaused = true;
@@ -270,7 +281,12 @@ impl Controller {
     /// Returns current execution phase, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn current_phase(&self) -> Option<Phase> {
-        if self.cancelled { None } else { self.current_phase.clone() }
+        if self.cancelled {
+            None
+        }
+        else {
+            self.current_phase.clone()
+        }
     }
 
     pub fn run_stats(&self) -> &RunStats {
@@ -285,12 +301,16 @@ impl Controller {
     /// Returns current execution is paused, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn paused(&self) -> bool {
-        if self.cancelled { return false; }
+        if self.cancelled {
+            return false;
+        }
 
-        if let Some(Phase { time, unpaused,  .. }) = self.current_phase {
+        if let Some(Phase { time, unpaused, .. }) = self.current_phase {
             !unpaused && time.elapsed() < self.pause_time
         }
-        else { false }
+        else {
+            false
+        }
     }
 
     /// Communicate with the current execution
@@ -319,7 +339,7 @@ impl Controller {
                         self.run_stats.consider(&phase);
                     }
                     self.current_phase = Some(phase);
-                },
+                }
                 OverseerUpdate::FinishedFunCall(_) => {
                     self.fun_call_history.pop();
                 }
@@ -336,7 +356,9 @@ impl Controller {
     }
 
     fn current_call_info(&self) -> Vec<SourceRef> {
-        if self.cancelled { vec![] }
+        if self.cancelled {
+            vec![]
+        }
         else {
             self.fun_call_history.iter().rev().cloned().collect()
         }
@@ -354,13 +376,21 @@ impl Controller {
     }
 
     pub fn current_external_call(&self) -> Option<ExternalCall> {
-        if self.cancelled { None } else { self.current_external_call.clone() }
+        if self.cancelled {
+            None
+        }
+        else {
+            self.current_external_call.clone()
+        }
     }
 
     pub fn answer_external_call(&mut self, result: Result<Int, String>) {
         self.current_external_call = None;
         if let Err(err) = self.external_function_answer.send(result) {
-            warn!("Comms failure with badder runtime when answering external call: {}", err);
+            warn!(
+                "Comms failure with badder runtime when answering external call: {}",
+                err
+            );
         }
     }
 
@@ -389,7 +419,7 @@ impl Controller {
 
         let external_function_ids = self.external_function_ids.clone();
 
-        thread::spawn(move|| {
+        thread::spawn(move || {
             let overseer = ControllerOverseer {
                 next_id: 0,
                 pause_time: get_pause,

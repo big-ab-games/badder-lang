@@ -158,11 +158,9 @@ impl Token {
     }
 
     pub fn matches(&self, token: &Token) -> bool {
-        match *self {
-            Num(_) => if let Num(_) = *token { true } else { false },
-            Id(_) => if let Id(_) = *token { true } else { false },
-            Indent(_) => if let Indent(_) = *token { true } else { false },
-            ref me => me == token,
+        match (self, token) {
+            (&Num(_), &Num(_)) | (&Id(_), &Id(_)) | (&Indent(_), &Indent(_)) => true,
+            (me, other) => me == other,
         }
     }
 
@@ -170,9 +168,8 @@ impl Token {
         match *self {
             Num(x) => format!("number `{}`", x).into(),
             Id(ref id) => format!("id `{}`", id).into(),
-            Pls | Sub | Mul | Div | OpnBrace | ClsBrace | Ass | OpAss(_) | Gt | Lt | GtEq | LtEq => {
-                format!("operator `{:?}`", self).into()
-            },
+            Pls | Sub | Mul | Div | OpnBrace | ClsBrace | Ass | OpAss(_) | Gt | Lt | GtEq
+            | LtEq => format!("operator `{:?}`", self).into(),
             Indent(_) => format!("indent {:?}", self).into(),
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
@@ -186,14 +183,16 @@ impl Token {
         if let Token::Id(ref inner) = *self {
             Some(inner)
         }
-        else { None }
+        else {
+            None
+        }
     }
 
     pub fn is_binary_op(&self) -> bool {
         match *self {
             Pls | Sub | Mul | Div | Ass | Gt | GtEq | Lt | LtEq | Mod | OpAss(_) | Is | And
             | Or | In | Dot => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -245,7 +244,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn cursor(&self) -> SourceRef {
-        SourceRef((self.line_num, self.char_num), (self.line_num, self.char_num+1))
+        SourceRef(
+            (self.line_num, self.char_num),
+            (self.line_num, self.char_num + 1),
+        )
     }
 
     /// Attempts to return next token without advancing, has limitations
@@ -359,11 +361,10 @@ impl<'a> Lexer<'a> {
                     _ => ", try removing 2 spaces.",
                 };
 
-                return Err(BadderError::at(src_ref.up_to(self.cursor()))
-                    .describe(
-                        Stage::Lexer,
-                        format!("Invalid indent must be multiple of 4 spaces{}", hint),
-                    ));
+                return Err(BadderError::at(src_ref.up_to(self.cursor())).describe(
+                    Stage::Lexer,
+                    format!("Invalid indent must be multiple of 4 spaces{}", hint),
+                ));
             }
             return Ok((Indent(spaces / 4), src_ref.up_to(self.cursor())));
         }
@@ -432,7 +433,7 @@ mod lexer_test {
             (Comma, SourceRef((1, 29), (1, 30))),
             (Num(2), SourceRef((1, 31), (1, 32))),
             (Eof, SourceRef((1, 32), (1, 33))),
-        ]{
+        ] {
             let (token, src_ref) = lexer.next_token().unwrap();
             println!("Token `{:?}`", token);
             assert_eq!(token, exp_token);

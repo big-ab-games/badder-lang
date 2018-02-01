@@ -26,9 +26,15 @@ impl SourceRef {
 impl fmt::Debug for SourceRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let SourceRef((sl, sc), (el, ec)) = *self;
-        if sl == el && sc+1 == ec { write!(f, "{}:{}", sl, sc) }
-        else if sl == el { write!(f, "{}:[{},{})", sl, sc, ec) }
-        else { write!(f, "[{}:{},{}:{})", sl, sc, el, ec) }
+        if sl == el && sc + 1 == ec {
+            write!(f, "{}:{}", sl, sc)
+        }
+        else if sl == el {
+            write!(f, "{}:[{},{})", sl, sc, ec)
+        }
+        else {
+            write!(f, "[{}:{},{}:{})", sl, sc, el, ec)
+        }
     }
 }
 
@@ -66,7 +72,7 @@ impl PartialBadderError {
         BadderError {
             stage,
             description: desc.into(),
-            src: self.0
+            src: self.0,
         }
     }
 }

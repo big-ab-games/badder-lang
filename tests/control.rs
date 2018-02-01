@@ -1,4 +1,5 @@
-#[macro_use] extern crate assert_matches;
+#[macro_use]
+extern crate assert_matches;
 extern crate badder_lang;
 extern crate env_logger;
 
@@ -44,33 +45,33 @@ fn controller_step_test() {
     let mut con = Controller::new_max_pause();
     con.execute(ast);
     // `var loops`
-    assert_eq!(await_next_pause!(con).src, SourceRef((2,1), (2,10)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((2, 1), (2, 10)));
     // `while loops < 3`
-    assert_eq!(await_next_pause!(con).src, SourceRef((5,1), (5,16)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((5, 1), (5, 16)));
     // `loops < 3`
-    assert_eq!(await_next_pause!(con).src, SourceRef((5,7), (5,16)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((5, 7), (5, 16)));
     // `loops += 1` -> `loops = loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
     // `loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
     // `loops < 3`
-    assert_eq!(await_next_pause!(con).src, SourceRef((5,7), (5,16)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((5, 7), (5, 16)));
     // `loops += 1` -> `loops = loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
     // `loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
     // `loops < 3`
-    assert_eq!(await_next_pause!(con).src, SourceRef((5,7), (5,16)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((5, 7), (5, 16)));
     // `loops += 1` -> `loops = loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
-     // `loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((6,5), (6,15)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
+    // `loops + 1`
+    assert_eq!(await_next_pause!(con).src, SourceRef((6, 5), (6, 15)));
     // `loops < 3`
-    assert_eq!(await_next_pause!(con).src, SourceRef((5,7), (5,16)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((5, 7), (5, 16)));
     // `var plus1 = loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((8,1), (8,22)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((8, 1), (8, 22)));
     // `loops + 1`
-    assert_eq!(await_next_pause!(con).src, SourceRef((8,13), (8,22)));
+    assert_eq!(await_next_pause!(con).src, SourceRef((8, 13), (8, 22)));
 }
 
 macro_rules! assert_stack {
@@ -155,26 +156,34 @@ fn external_functions_num_args() {
     con.add_external_function("external_sum(vv)");
     con.execute(ast);
 
-    loop { // call 1
+    loop {
+        // call 1
         if let Some(call) = con.current_external_call() {
             assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
             assert_eq!(call.args, vec![123, 12]);
             con.answer_external_call(Ok(135));
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Waited 2 seconds for expectation"
+        );
         con.refresh();
         assert_matches!(con.result(), None);
     }
 
-    loop { // call 2
+    loop {
+        // call 2
         if let Some(call) = con.current_external_call() {
             assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
             assert_eq!(call.args, vec![13, 135]);
             con.answer_external_call(Ok(-123)); // can be anything, obvs
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Waited 2 seconds for expectation"
+        );
         con.refresh();
         assert_matches!(con.result(), None);
     }

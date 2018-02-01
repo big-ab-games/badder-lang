@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cargo_name="$(cat Cargo.toml | grep -m1 'name = ' | cut -d'"' -f2)"
+cargo_name="$(grep -m1 'name = ' Cargo.toml | cut -d'"' -f2)"
 RUST_BACKTRACE=0 \
  RUST_LOG=$cargo_name=debug \
- cargo +nightly watch -x "test $@"
+ cargo +nightly watch -x "test $*"

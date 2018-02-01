@@ -1,8 +1,9 @@
-#[macro_use] extern crate log;
-extern crate string_cache;
-extern crate single_value_channel;
-extern crate strsim;
+#[macro_use]
+extern crate log;
 extern crate ordermap;
+extern crate single_value_channel;
+extern crate string_cache;
+extern crate strsim;
 
 mod common;
 mod lexer;
@@ -22,13 +23,13 @@ use common::*;
 use strsim::damerau_levenshtein as str_dist;
 
 pub use lexer::Token;
-pub use parser::{Parser, Ast};
+pub use parser::{Ast, Parser};
 pub use common::{BadderError, SourceRef};
 
 pub type Int = i32;
 
 const MAX_STACK: usize = 50;
-const UNKNOWN_SRC_REF: SourceRef = SourceRef((0,0), (0,0));
+const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum Builtin {
@@ -55,8 +56,7 @@ pub enum FrameData {
 
 impl fmt::Debug for FrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self
-        {
+        match *self {
             Value(x, ..) => write!(f, "Value({})", x),
             Callable(..) => write!(f, "Callable"),
             BuiltinCallable(..) => write!(f, "BuiltinCallable"),
@@ -72,13 +72,13 @@ impl FrameData {
     fn desc(&self, id: &Token) -> String {
         match *self {
             Value(..) => format!("var {:?}", id),
-            Callable(ref args, ..) =>
-                format!("{:?}({})",
-                        id,
-                        args.iter()
-                            .map(|a| format!("{:?}",a))
-                            .fold(String::new(), |all,n| all + &n)
-                ),
+            Callable(ref args, ..) => format!(
+                "{:?}({})",
+                id,
+                args.iter()
+                    .map(|a| format!("{:?}", a))
+                    .fold(String::new(), |all, n| all + &n)
+            ),
             Sequence(..) | BuiltinCallable(..) => format!("{:?}", id),
             Ref(..) => format!("ref->{:?}", id),
             _ => "_".into(),
@@ -115,7 +115,12 @@ impl fmt::Debug for StackKey {
             write!(f, "not-frame({})", self.access_up_to + 1)
         }
         else {
-            write!(f, "not-frame({}-{})", self.access_up_to + 1, self.access_from - 1)
+            write!(
+                f,
+                "not-frame({}-{})",
+                self.access_up_to + 1,
+                self.access_from - 1
+            )
         }
     }
 }
@@ -124,7 +129,7 @@ impl StackKey {
     fn from_fun_call(fun_declared_frame: usize, call_frame: usize) -> StackKey {
         StackKey {
             access_up_to: fun_declared_frame,
-            access_from: call_frame + 1
+            access_from: call_frame + 1,
         }
     }
 
@@ -137,15 +142,15 @@ use FrameData::*;
 use InterpreterUpFlow::*;
 
 pub trait Overseer {
-    fn oversee(&mut self,
-               stack: &[OrderMap<Token, FrameData>],
-               ast: &Ast,
-               current_scope: usize,
-               stack_key: StackKey) -> Result<(), ()>;
+    fn oversee(
+        &mut self,
+        stack: &[OrderMap<Token, FrameData>],
+        ast: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<(), ()>;
 
-    fn oversee_after(&mut self,
-                     _stack: &[OrderMap<Token, FrameData>],
-                     _ast: &Ast) {}
+    fn oversee_after(&mut self, _stack: &[OrderMap<Token, FrameData>], _ast: &Ast) {}
 
     fn external_function_signatures(&self) -> &[Token];
 
@@ -155,11 +160,13 @@ pub trait Overseer {
 pub struct NoOverseer;
 
 impl Overseer for NoOverseer {
-    fn oversee(&mut self,
-               _stack: &[OrderMap<Token, FrameData>],
-               _: &Ast,
-               _: usize,
-               _: StackKey) -> Result<(), ()> {
+    fn oversee(
+        &mut self,
+        _stack: &[OrderMap<Token, FrameData>],
+        _: &Ast,
+        _: usize,
+        _: StackKey,
+    ) -> Result<(), ()> {
         Ok(())
     }
 
@@ -175,16 +182,23 @@ impl Overseer for NoOverseer {
 #[derive(Debug)]
 pub struct Interpreter<O: Overseer> {
     stack: Vec<OrderMap<Token, FrameData>>,
-    overseer: O
+    overseer: O,
 }
 
 #[inline]
 fn bool_to_num(b: bool) -> Int {
-    if b { 1 } else { 0 }
+    if b {
+        1
+    }
+    else {
+        0
+    }
 }
 
 fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
-    Err(Error(BadderError::at(UNKNOWN_SRC_REF).describe(Stage::Interpreter, desc.into())))
+    Err(Error(
+        BadderError::at(UNKNOWN_SRC_REF).describe(Stage::Interpreter, desc.into()),
+    ))
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
@@ -193,12 +207,16 @@ fn convert_signed_index(mut i: i32, length: usize) -> usize {
     }
 
     let len = length as i32;
-    if i < 0 { i = (len + i % len) % len; }
+    if i < 0 {
+        i = (len + i % len) % len;
+    }
     i as usize
 }
 
 impl Default for Interpreter<NoOverseer> {
-    fn default() -> Interpreter<NoOverseer> { Interpreter::new(NoOverseer) }
+    fn default() -> Interpreter<NoOverseer> {
+        Interpreter::new(NoOverseer)
+    }
 }
 
 impl<O: Overseer> Interpreter<O> {
@@ -214,9 +232,7 @@ impl<O: Overseer> Interpreter<O> {
         }
     }
 
-    fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey)
-        -> String
-    {
+    fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey) -> String {
         let keys: HashSet<&Token> = self.stack
             .iter()
             .enumerate()
@@ -227,7 +243,11 @@ impl<O: Overseer> Interpreter<O> {
             format!("id `{:?}` not found in scope", id)
         }
         else {
-            assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
+            assert!(
+                !keys.contains(id),
+                "!keys.contains(id): `{:?}` is available",
+                id
+            );
             let mut available: Vec<_> = keys.iter()
                 .map(|k| k.id_str().unwrap_or("#"))
                 .filter(|k| !k.starts_with('#'))
@@ -240,28 +260,33 @@ impl<O: Overseer> Interpreter<O> {
                 available.sort_by_key(|known| str_dist(id, known));
             }
             let available = available.join(", ");
-            format!("id `{:?}` not found in scope, available: {{{}}}", id, available)
+            format!(
+                "id `{:?}` not found in scope, available: {{{}}}",
+                id, available
+            )
         }
     }
 
-    fn highest_frame_idx(&self,
-                         key: &Token,
-                         current_scope: usize,
-                         stack_key: StackKey)
-                         -> Option<usize> {
+    fn highest_frame_idx(
+        &self,
+        key: &Token,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Option<usize> {
         if self.stack.is_empty() {
             return None;
         }
 
         let mut idx = min(self.stack.len() - 1, current_scope);
         loop {
-            if stack_key.can_access(idx) &&
-                self.stack.len() > idx &&
-                self.stack[idx].contains_key(key)
+            if stack_key.can_access(idx) && self.stack.len() > idx
+                && self.stack[idx].contains_key(key)
             {
                 return Some(idx);
             }
-            if idx == 0 { break; }
+            if idx == 0 {
+                break;
+            }
             idx -= 1;
         }
         None
@@ -271,48 +296,46 @@ impl<O: Overseer> Interpreter<O> {
     fn log_eval(&mut self, ast: &Ast, current_scope: usize, stack_key: StackKey) {
         match *ast {
             Ast::Line(..) | Ast::LinePair(..) | Ast::Num(..) => (),
-            _ => trace!("base: {}, access: {:?}\nstack: {:?}\neval({:?})",
-                        current_scope,
-                        stack_key,
-                        self.stack,
-                        ast),
+            _ => trace!(
+                "base: {}, access: {:?}\nstack: {:?}\neval({:?})",
+                current_scope,
+                stack_key,
+                self.stack,
+                ast
+            ),
         }
     }
 
     #[inline]
-    fn eval_bin_op(&mut self,
-                   token: &Token,
-                   left: &Ast,
-                   right: &Ast,
-                   current_scope: usize,
-                   stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_bin_op(
+        &mut self,
+        token: &Token,
+        left: &Ast,
+        right: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
         macro_rules! unwrap_checked {
-            ($c:expr) => { $c.map(|v| Ok(v)).unwrap_or_else(|| parent_error("overflow")) }
+            ($c:expr) => { $c.map(Ok).unwrap_or_else(|| parent_error("overflow")) }
         }
 
         match *token {
             Pls => unwrap_checked!(eval!(left)?.checked_add(eval!(right)?)),
             Sub => unwrap_checked!(eval!(left)?.checked_sub(eval!(right)?)),
             Mul => unwrap_checked!(eval!(left)?.checked_mul(eval!(right)?)),
-            Mod | Div => {
-                match (eval!(right)?, token) {
-                    (0, _) => parent_error("Cannot divide by zero"),
-                    (divisor, &Div) => unwrap_checked!(eval!(left)?.checked_div(divisor)),
-                    (divisor, _) => unwrap_checked!(eval!(left)?.checked_rem(divisor)),
-                }
-            }
-            And => {
-                match eval!(left)? {
-                    0 => Ok(0),
-                    _ => eval!(right),
-                }
+            Mod | Div => match (eval!(right)?, token) {
+                (0, _) => parent_error("Cannot divide by zero"),
+                (divisor, &Div) => unwrap_checked!(eval!(left)?.checked_div(divisor)),
+                (divisor, _) => unwrap_checked!(eval!(left)?.checked_rem(divisor)),
             },
-            Or => {
-                match eval!(left)? {
-                    0 => eval!(right),
-                    x => Ok(x),
-                }
+            And => match eval!(left)? {
+                0 => Ok(0),
+                _ => eval!(right),
+            },
+            Or => match eval!(left)? {
+                0 => eval!(right),
+                x => Ok(x),
             },
             Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
             Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
@@ -324,11 +347,13 @@ impl<O: Overseer> Interpreter<O> {
     }
 
     #[inline]
-    fn eval_while(&mut self,
-                  expr: &Ast,
-                  block: &Ast,
-                  current_scope: usize,
-                  stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_while(
+        &mut self,
+        expr: &Ast,
+        block: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
         if eval!(expr)? == 0 {
@@ -343,7 +368,7 @@ impl<O: Overseer> Interpreter<O> {
             match eval {
                 Err(LoopBreak) => break,
                 Ok(_) | Err(LoopContinue) => (),
-                err @ Err(_) => return err ,
+                err @ Err(_) => return err,
             };
             if eval!(expr)? == 0 {
                 break;
@@ -354,14 +379,16 @@ impl<O: Overseer> Interpreter<O> {
     }
 
     #[inline]
-    fn eval_for_in(&mut self,
-                   idx_id: &Option<Token>,
-                   item_id: &Token,
-                   list_expr: &Ast,
-                   block: &Ast,
-                   src: SourceRef,
-                   current_scope: usize,
-                   stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_for_in(
+        &mut self,
+        idx_id: &Option<Token>,
+        item_id: &Token,
+        list_expr: &Ast,
+        block: &Ast,
+        src: SourceRef,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
 
         let mut list = eval_seq!(list_expr)?;
@@ -383,7 +410,7 @@ impl<O: Overseer> Interpreter<O> {
             match eval {
                 Err(LoopBreak) => break,
                 Ok(_) | Err(LoopContinue) => (),
-                err @ Err(_) => return err ,
+                err @ Err(_) => return err,
             };
             index += 1;
             list = eval_seq!(list_expr)?;
@@ -393,11 +420,13 @@ impl<O: Overseer> Interpreter<O> {
     }
 
     #[inline]
-    fn eval_fun_call(&mut self,
-                     id: &Token,
-                     args: &[Ast],
-                     current_scope: usize,
-                     stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_fun_call(
+        &mut self,
+        id: &Token,
+        args: &[Ast],
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
         macro_rules! highest_frame_idx {
@@ -427,10 +456,7 @@ impl<O: Overseer> Interpreter<O> {
                         (arg_ids.clone(), Arc::clone(block), src)
                     }
                     _ => {
-                        return parent_error(format!(
-                            "Invalid reference to non callable `{:?}`",
-                            id
-                        ))
+                        return parent_error(format!("Invalid reference to non callable `{:?}`", id))
                     }
                 }
             };
@@ -447,16 +473,18 @@ impl<O: Overseer> Interpreter<O> {
                         else {
                             return parent_error(self.unknown_id_err(id, stack_key));
                         }
-                    },
+                    }
                     ref ast => Value(eval!(ast)?, src),
                 };
                 f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
             }
             self.stack.push(f_frame);
 
-            let out = match self.eval(&callable_block,
-                                      current_scope + 1,
-                                      StackKey::from_fun_call(idx, current_scope)) {
+            let out = match self.eval(
+                &callable_block,
+                current_scope + 1,
+                StackKey::from_fun_call(idx, current_scope),
+            ) {
                 Err(FunReturn(value)) => Ok(value),
                 Ok(x) => Ok(x),
                 x => x,
@@ -466,15 +494,19 @@ impl<O: Overseer> Interpreter<O> {
             self.stack.pop();
             return out;
         }
-        else { parent_error(self.unknown_id_err(id, stack_key)) }
+        else {
+            parent_error(self.unknown_id_err(id, stack_key))
+        }
     }
 
     #[inline]
-    fn eval_refer_seq_index(&mut self,
-                            seq_id: &Token,
-                            index_expr: &Ast,
-                            current_scope: usize,
-                            stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_refer_seq_index(
+        &mut self,
+        seq_id: &Token,
+        index_expr: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
         if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
@@ -499,27 +531,31 @@ impl<O: Overseer> Interpreter<O> {
                     actual_index
                 ));
             }
-            else if seq_len as usize <= index  {
+            else if seq_len as usize <= index {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
-                    index,
-                    seq_len));
+                    index, seq_len
+                ));
             }
             Ok(match self.stack[idx][&seq_id] {
                 Sequence(ref vec, ..) => vec[index],
                 _ => unreachable!(),
             })
         }
-        else { parent_error(self.unknown_id_err(seq_id, stack_key)) }
+        else {
+            parent_error(self.unknown_id_err(seq_id, stack_key))
+        }
     }
 
     #[inline]
-    fn eval_reassign_seq_index(&mut self,
-                               seq_id: &Token,
-                               index_expr: &Ast,
-                               expr: &Ast,
-                               current_scope: usize,
-                               stack_key: StackKey) -> Result<Int, InterpreterUpFlow> {
+    fn eval_reassign_seq_index(
+        &mut self,
+        seq_id: &Token,
+        index_expr: &Ast,
+        expr: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
         if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
@@ -537,11 +573,11 @@ impl<O: Overseer> Interpreter<O> {
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
-            if seq_len as usize <= index  {
+            if seq_len as usize <= index {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
-                    index,
-                    seq_len));
+                    index, seq_len
+                ));
             }
             let new_val = eval!(expr)?;
             match self.stack[idx].get_mut(&seq_id) {
@@ -550,15 +586,21 @@ impl<O: Overseer> Interpreter<O> {
             }
             Ok(0)
         }
-        else { parent_error(self.unknown_id_err(seq_id, stack_key)) }
+        else {
+            parent_error(self.unknown_id_err(seq_id, stack_key))
+        }
     }
 
     /// Evaluates the passed in syntax tree
     /// :current_scope the stack frame index currently running in
     /// :restrict_ref optional max frame index referencable
     ///    (not including >= current_scope, which is always ok)
-    fn eval(&mut self, ast: &Ast, current_scope: usize, stack_key: StackKey)
-            -> Result<Int, InterpreterUpFlow> {
+    fn eval(
+        &mut self,
+        ast: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
         macro_rules! highest_frame_idx {
@@ -567,15 +609,20 @@ impl<O: Overseer> Interpreter<O> {
 
         self.log_eval(ast, current_scope, stack_key);
 
-        if self.overseer.oversee(&self.stack, ast, current_scope, stack_key).is_err() {
-            return Err(Error(BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled")));
+        if self.overseer
+            .oversee(&self.stack, ast, current_scope, stack_key)
+            .is_err()
+        {
+            return Err(Error(
+                BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled"),
+            ));
         }
 
         let result = match *ast {
             Ast::Num(Num(x), ..) => Ok(x),
             Ast::BinOp(ref token, ref left, ref right, ..) => {
                 self.eval_bin_op(token, left, right, current_scope, stack_key)
-            },
+            }
             Ast::LeftUnaryOp(Sub, ref val, ..) => Ok(-eval!(val)?),
             Ast::LeftUnaryOp(Not, ref val, ..) => Ok(match eval!(val)? {
                 0 => 1,
@@ -585,40 +632,41 @@ impl<O: Overseer> Interpreter<O> {
                 let v = eval!(expr)?;
                 self.stack[current_scope].insert(id.clone(), Value(v, src));
                 Ok(v)
-            },
+            }
             Ast::Reassign(ref id, ref expr, ..) => {
                 // reassign to any parent scope
                 if let Some(idx) = highest_frame_idx!(id) {
                     let v = eval!(expr)?;
                     let ass_src = match self.stack[idx][id] {
                         Value(.., src) => src,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
                     *self.stack[idx].get_mut(id).unwrap() = Value(v, ass_src);
                     Ok(v)
                 }
                 else {
-                    parent_error(format!("{}, or did you mean `var {:?} =`?",
-                                         self.unknown_id_err(id, stack_key), id))
+                    parent_error(format!(
+                        "{}, or did you mean `var {:?} =`?",
+                        self.unknown_id_err(id, stack_key),
+                        id
+                    ))
                 }
-            },
+            }
             Ast::Refer(ref id, ..) => {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
                         Value(v, ..) => Ok(v),
-                        _ => parent_error(format!(
-                            "Invalid reference to non number `{:?}`",
-                            id)),
+                        _ => parent_error(format!("Invalid reference to non number `{:?}`", id)),
                     }
                 }
-                else { parent_error(self.unknown_id_err(id, stack_key)) }
-            },
+                else {
+                    parent_error(self.unknown_id_err(id, stack_key))
+                }
+            }
             Ast::If(ref expr, ref block, ref else_line, ..) => Ok(match eval!(expr)? {
-                0 => {
-                    match *else_line {
-                        Some(ref else_line) => eval!(else_line)?,
-                        None => 0,
-                    }
+                0 => match *else_line {
+                    Some(ref else_line) => eval!(else_line)?,
+                    None => 0,
                 },
                 _ => {
                     self.stack.push(OrderMap::new());
@@ -626,14 +674,22 @@ impl<O: Overseer> Interpreter<O> {
                     self.stack.pop();
                     eval?;
                     0
-                },
+                }
             }),
             Ast::While(ref expr, ref block, ..) => {
                 self.eval_while(expr, block, current_scope, stack_key)
-            },
+            }
             Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => {
-                self.eval_for_in(idx_id, item_id, list_expr, block, src, current_scope, stack_key)
-            },
+                self.eval_for_in(
+                    idx_id,
+                    item_id,
+                    list_expr,
+                    block,
+                    src,
+                    current_scope,
+                    stack_key,
+                )
+            }
             Ast::LoopNav(ref token, ..) => {
                 let loop_token = Id("#loop".into());
                 if highest_frame_idx!(&loop_token).is_some() {
@@ -646,7 +702,7 @@ impl<O: Overseer> Interpreter<O> {
                 else {
                     parent_error(format!("Invalid use of loop nav `{:?}`", token))
                 }
-            },
+            }
             Ast::AssignFun(ref id, ref args, ref block, src) => {
                 let top = self.stack.len() - 1;
                 match self.stack[current_scope].get(id) {
@@ -655,24 +711,26 @@ impl<O: Overseer> Interpreter<O> {
                         let desc = format!(
                             "Declaration `fun {:?}` conflicts with `{}` in same scope",
                             id,
-                            other.desc(id));
-                        return Err(Error(BadderError::at(ast.src())
-                            .describe(Stage::Interpreter, desc)));
+                            other.desc(id)
+                        );
+                        return Err(Error(
+                            BadderError::at(ast.src()).describe(Stage::Interpreter, desc),
+                        ));
                     }
                 };
                 self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block), src));
                 Ok(0)
-            },
+            }
             Ast::Call(ref id, ref args, ..) => {
                 self.eval_fun_call(id, args, current_scope, stack_key)
-            },
+            }
             Ast::Return(ref expr, ..) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr, ..) => {
                 self.eval_refer_seq_index(seq_id, index_expr, current_scope, stack_key)
-            },
+            }
             Ast::ReassignSeqIndex(ref seq_id, ref index_expr, ref expr, ..) => {
                 self.eval_reassign_seq_index(seq_id, index_expr, expr, current_scope, stack_key)
-            },
+            }
             Ast::AssignSeq(ref id, ref list, src) => {
                 let v = eval_seq!(list)?;
                 match self.stack[current_scope].get(id) {
@@ -681,21 +739,23 @@ impl<O: Overseer> Interpreter<O> {
                         let desc = format!(
                             "Assignment of `seq {:?}[]` conflicts with `{}` in same scope",
                             id,
-                            other.desc(id));
-                        return Err(Error(BadderError::at(ast.src())
-                            .describe(Stage::Interpreter, desc)));
+                            other.desc(id)
+                        );
+                        return Err(Error(
+                            BadderError::at(ast.src()).describe(Stage::Interpreter, desc),
+                        ));
                     }
                 };
                 self.stack[current_scope].insert(id.clone(), Sequence(v, src));
                 Ok(0)
-            },
+            }
             Ast::Line(scope, ref expr, ..) => {
                 let scope = max(current_scope, scope);
                 if scope > MAX_STACK {
                     return parent_error("stack overflow");
                 }
                 self.eval(expr, scope, stack_key)
-            },
+            }
             Ast::LinePair(ref line, ref next_line, ..) => {
                 eval!(line)?;
                 let mut next = next_line;
@@ -704,7 +764,7 @@ impl<O: Overseer> Interpreter<O> {
                     next = l3;
                 }
                 eval!(next)
-            },
+            }
             Ast::Empty(..) => Ok(0),
             _ => parent_error(format!("Unexpected syntax {:?}", ast)),
         };
@@ -712,21 +772,30 @@ impl<O: Overseer> Interpreter<O> {
         self.overseer.oversee_after(&self.stack, ast);
 
         match result {
-            Err(Error(BadderError { stage, description, src })) => {
+            Err(Error(BadderError {
+                stage,
+                description,
+                src,
+            })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(BadderError::at(ast.src()).describe(stage, description)))
+                    Err(Error(
+                        BadderError::at(ast.src()).describe(stage, description),
+                    ))
                 }
                 else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
-            },
-            x => x
+            }
+            x => x,
         }
     }
 
-    fn eval_seq(&mut self, list: &Ast, current_scope: usize, stack_key: StackKey)
-        -> Result<Vec<Int>, InterpreterUpFlow>
-    {
+    fn eval_seq(
+        &mut self,
+        list: &Ast,
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Vec<Int>, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
 
         let result = match *list {
@@ -753,31 +822,45 @@ impl<O: Overseer> Interpreter<O> {
                         )),
                     }
                 }
-                else { parent_error(self.unknown_id_err(id, stack_key)) }
-            },
+                else {
+                    parent_error(self.unknown_id_err(id, stack_key))
+                }
+            }
             _ => parent_error(format!("Unexpected Seq syntax {:?}", list)),
         };
 
         match result {
-            Err(Error(BadderError { stage, description, src })) => {
+            Err(Error(BadderError {
+                stage,
+                description,
+                src,
+            })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(BadderError::at(list.src()).describe(stage, description)))
+                    Err(Error(
+                        BadderError::at(list.src()).describe(stage, description),
+                    ))
                 }
                 else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
-            },
-            x => x
+            }
+            x => x,
         }
     }
 
-    fn call_builtin(&mut self, builtin: Builtin, args: &[Ast], current_scope: usize, stack_key: StackKey)
-        -> Result<Int, InterpreterUpFlow>
-    {
+    fn call_builtin(
+        &mut self,
+        builtin: Builtin,
+        args: &[Ast],
+        current_scope: usize,
+        stack_key: StackKey,
+    ) -> Result<Int, InterpreterUpFlow> {
         let arg1 = if args.len() == 2 {
             Some(self.eval(&args[1], current_scope, stack_key)?)
         }
-        else { None };
+        else {
+            None
+        };
 
         // all builtins are core lib for seq, ie first arg is a seq
         match args[0] {
@@ -789,36 +872,31 @@ impl<O: Overseer> Interpreter<O> {
                         id = n_id.clone();
                     }
                     match self.stack[idx].get_mut(&id) {
-                        Some(&mut Sequence(ref mut v, ..)) => {
-                            match builtin {
-                                Builtin::Size => {
-                                    Ok(v.len() as i32)
-                                },
-                                Builtin::SeqAdd => {
-                                    if v.len() == (i32::MAX - 1) as usize {
-                                        return parent_error(
-                                            "`add(sv)` failed, sequence is max size"
-                                        );
-                                    }
-                                    v.push(arg1.unwrap());
-                                    Ok(0)
+                        Some(&mut Sequence(ref mut v, ..)) => match builtin {
+                            Builtin::Size => Ok(v.len() as i32),
+                            Builtin::SeqAdd => {
+                                if v.len() == (i32::MAX - 1) as usize {
+                                    return parent_error("`add(sv)` failed, sequence is max size");
                                 }
-                                Builtin::SeqRemove => {
-                                    let index = convert_signed_index(arg1.unwrap(), v.len());
-                                    if v.is_empty() {
-                                        return parent_error(format!(
-                                            "Invalid sequence index {} not in empty sequence",
-                                            arg1.unwrap()
-                                        ));
-                                    }
-                                    else if v.len() <= index  {
-                                        return parent_error(format!(
-                                            "Invalid sequence index {} not in 0..{} (or negative)",
-                                            index,
-                                            v.len()));
-                                    }
-                                    Ok(v.remove(index))
+                                v.push(arg1.unwrap());
+                                Ok(0)
+                            }
+                            Builtin::SeqRemove => {
+                                let index = convert_signed_index(arg1.unwrap(), v.len());
+                                if v.is_empty() {
+                                    return parent_error(format!(
+                                        "Invalid sequence index {} not in empty sequence",
+                                        arg1.unwrap()
+                                    ));
                                 }
+                                else if v.len() <= index {
+                                    return parent_error(format!(
+                                        "Invalid sequence index {} not in 0..{} (or negative)",
+                                        index,
+                                        v.len()
+                                    ));
+                                }
+                                Ok(v.remove(index))
                             }
                         },
                         Some(ref data) => parent_error(format!(
@@ -828,22 +906,22 @@ impl<O: Overseer> Interpreter<O> {
                         None => unreachable!(),
                     }
                 }
-                else { parent_error(self.unknown_id_err(id, stack_key)) }
-            },
+                else {
+                    parent_error(self.unknown_id_err(id, stack_key))
+                }
+            }
             // otherwise, ie literal, just evaluate it
             ref ast => {
                 let literal = self.eval_seq(ast, current_scope, stack_key)?;
                 match builtin {
-                    Builtin::Size => {
-                        Ok(literal.len() as i32)
-                    },
+                    Builtin::Size => Ok(literal.len() as i32),
                     Builtin::SeqAdd => Ok(0),
                     Builtin::SeqRemove => {
                         let index = convert_signed_index(arg1.unwrap(), literal.len());
                         Ok(literal[index])
                     }
                 }
-            },
+            }
         }
     }
 
@@ -863,7 +941,6 @@ impl<O: Overseer> Interpreter<O> {
         }
     }
 }
-
 
 #[cfg(test)]
 #[macro_use]
