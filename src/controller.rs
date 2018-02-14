@@ -14,7 +14,7 @@ pub struct Phase {
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
     unpaused: bool,
-    pub stack: Arc<Vec<OrderMap<Token, FrameData>>>,
+    pub stack: Arc<Vec<IndexMap<Token, FrameData>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,7 +49,7 @@ struct ControllerOverseer {
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
     external_function_answer: mpsc::Receiver<Result<Int, String>>,
-    last_stack_copy: Option<Arc<Vec<OrderMap<Token, FrameData>>>>,
+    last_stack_copy: Option<Arc<Vec<IndexMap<Token, FrameData>>>>,
 }
 
 fn interested_in(ast: &Ast) -> bool {
@@ -64,8 +64,8 @@ fn interested_in(ast: &Ast) -> bool {
 impl ControllerOverseer {
     fn replace_last_stack(
         &mut self,
-        stack: &[OrderMap<Token, FrameData>],
-    ) -> Arc<Vec<OrderMap<Token, FrameData>>> {
+        stack: &[IndexMap<Token, FrameData>],
+    ) -> Arc<Vec<IndexMap<Token, FrameData>>> {
         let last: Arc<Vec<_>> = Arc::new(stack.into());
         self.last_stack_copy = Some(Arc::clone(&last));
         last
@@ -75,7 +75,7 @@ impl ControllerOverseer {
 impl Overseer for ControllerOverseer {
     fn oversee(
         &mut self,
-        stack: &[OrderMap<Token, FrameData>], // Cow?
+        stack: &[IndexMap<Token, FrameData>], // Cow?
         ast: &Ast,
         _current_scope: usize,
         _stack_key: StackKey,
@@ -159,7 +159,7 @@ impl Overseer for ControllerOverseer {
         }
     }
 
-    fn oversee_after(&mut self, _stack: &[OrderMap<Token, FrameData>], ast: &Ast) {
+    fn oversee_after(&mut self, _stack: &[IndexMap<Token, FrameData>], ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
             let _ = self.to_controller
                 .send(OverseerUpdate::FinishedFunCall(id.clone()));
@@ -453,7 +453,7 @@ impl ExternalCall {
 #[derive(Debug, Clone, Default)]
 pub struct RunStats {
     /// source_ref -> evaluation count
-    pub eval_counts: OrderMap<SourceRef, usize>,
+    pub eval_counts: IndexMap<SourceRef, usize>,
     last_phase: Option<u64>,
 }
 

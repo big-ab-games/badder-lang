@@ -8,7 +8,7 @@ log = "0.4"
 string_cache = "0.7"
 single_value_channel = "1"
 strsim = "0.7"
-ordermap = "0.4"
+indexmap = "0.4.1"
 
 [dev-dependencies]
 env_logger = "0.5"
