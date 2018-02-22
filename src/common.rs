@@ -21,6 +21,11 @@ impl SourceRef {
     pub fn up_to_next_line(self) -> SourceRef {
         SourceRef(self.0, ((self.0).0 + 1, 1))
     }
+
+    pub fn contains(&self, SourceRef((ofl, ofc), (otl, otc)): SourceRef) -> bool {
+        let SourceRef((fl, fc), (tl, tc)) = *self;
+        ofl >= fl && otl <= tl && ofc >= fc && otc <= tc
+    }
 }
 
 impl fmt::Debug for SourceRef {
