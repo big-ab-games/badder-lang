@@ -1176,6 +1176,7 @@ mod parser_test {
         };
         ($ast:ident = $pat:pat, src = $src:expr) => {{
             let src_eq = src_eq!($ast, $src);
+            #[allow(match_ref_pats)]
             let out = match $ast {
                 $pat => $ast,
                 _ => panic!("Unexpected {}", $ast.debug_string())
@@ -1368,10 +1369,14 @@ mod parser_test {
             ast = Ast::Line(0, ast, ..),
             src = SourceRef((1, 1), (1, 14))
         );
-        let ref ast = *expect_ast!(ast = Ast::AssignFun(.., ast, _),
-            src = SourceRef((1, 1), (1, 14)));
-        let ref ast = **expect_ast!(ast = &Ast::Line(1, ref ast, ..),
-            src = SourceRef((2, 1), (2, 17)));
+        let ast = &*expect_ast!(
+            ast = Ast::AssignFun(.., ast, _),
+            src = SourceRef((1, 1), (1, 14))
+        );
+        let ast = &**expect_ast!(
+            ast = &Ast::Line(1, ref ast, ..),
+            src = SourceRef((2, 1), (2, 17))
+        );
         expect_ast!(ast = &Ast::Return(ref ast, ..), src = SourceRef((2, 5), (2, 17)));
 
         let ast = *expect_ast!(

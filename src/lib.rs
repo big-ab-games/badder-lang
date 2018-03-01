@@ -960,7 +960,7 @@ mod util {
         let (sender, receiver) = mpsc::channel();
         let before_parse = Instant::now();
         debug!("parsing...");
-        let code: Ast = Parser::parse_str(code.into())?;
+        let code: Ast = Parser::parse_str(code)?;
         debug!("parsed in {:?}, interpreting...", before_parse.elapsed());
 
         thread::spawn(move || {
@@ -1009,9 +1009,9 @@ mod util {
         unreachable!();
     }
 
-    /// assert_program!("..." => 123)
+    /// `assert_program!("..." => 123)`
     /// Assert that a program outputs a given result
-    /// assert_program!("..." =>X "Three dots are not a program", "you are not trying")
+    /// `assert_program!("..." =>X "Three dots are not a program", "you are not trying")`
     /// Assert a program fails & the error message includes given substrings (case insensitive)
     #[macro_export]
     macro_rules! assert_program {
@@ -1111,9 +1111,9 @@ mod fitness {
     fn long_program() {
         assert_program!("var init";
                         "fun inc()";
-                        &"    init += 1\n".repeat(10000);
+                        &"    init += 1\n".repeat(10_000);
                         "inc()";
-                        "init" => 10000, debug_parse = false); // debug parse output is 10000 lines
+                        "init" => 10_000, debug_parse = false); // debug parse output is 10000 lines
     }
 
     #[test]
