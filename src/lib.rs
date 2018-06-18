@@ -430,11 +430,28 @@ impl<O: Overseer> Interpreter<O> {
         args: &[Ast],
         current_scope: usize,
         stack_key: StackKey,
+        // Parent oversee values deferred until after
+        // function arguments have been overseen
+        deferred_oversee: (&Ast, usize, StackKey),
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
         macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
         macro_rules! highest_frame_idx {
             ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) }
+        }
+        macro_rules! oversee_deferred {
+            ($deferred_oversee:expr) => {{
+                let (defer_ast, defer_scope, defer_key) = $deferred_oversee;
+                if self.overseer
+                    .oversee(&self.stack, defer_ast, defer_scope, defer_key)
+                    .is_err()
+                {
+                    return Err(Error(
+                        BadderError::at(defer_ast.src())
+                            .describe(Stage::Interpreter, "cancelled"),
+                    ));
+                }
+            }}
         }
 
         if let Some(idx) = highest_frame_idx!(id) {
@@ -443,7 +460,7 @@ impl<O: Overseer> Interpreter<O> {
                 builtin_callable = Some(builtin);
             }
             if let Some(builtin) = builtin_callable {
-                return self.call_builtin(builtin, args, current_scope, stack_key);
+                return self.call_builtin(builtin, args, current_scope, stack_key, deferred_oversee);
             }
 
             if self.stack[idx][id] == ExternalCallable {
@@ -451,6 +468,9 @@ impl<O: Overseer> Interpreter<O> {
                 for arg in args {
                     evaluated_args.push(eval!(arg)?);
                 }
+
+                oversee_deferred!(deferred_oversee);
+
                 return self.call_external(id.clone(), evaluated_args);
             }
 
@@ -482,6 +502,7 @@ impl<O: Overseer> Interpreter<O> {
                 };
                 f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
             }
+            oversee_deferred!(deferred_oversee);
             self.stack.push(f_frame);
 
             let out = match self.eval(
@@ -613,7 +634,11 @@ impl<O: Overseer> Interpreter<O> {
 
         self.log_eval(ast, current_scope, stack_key);
 
-        if self.overseer
+        let mut deferred_oversee = None;
+        if let Ast::Call(..) = *ast {
+            deferred_oversee = Some((ast, current_scope, stack_key))
+        }
+        else if self.overseer
             .oversee(&self.stack, ast, current_scope, stack_key)
             .is_err()
         {
@@ -726,7 +751,7 @@ impl<O: Overseer> Interpreter<O> {
                 Ok(0)
             }
             Ast::Call(ref id, ref args, ..) => {
-                self.eval_fun_call(id, args, current_scope, stack_key)
+                self.eval_fun_call(id, args, current_scope, stack_key, deferred_oversee.unwrap())
             }
             Ast::Return(ref expr, ..) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr, ..) => {
@@ -858,6 +883,9 @@ impl<O: Overseer> Interpreter<O> {
         args: &[Ast],
         current_scope: usize,
         stack_key: StackKey,
+        // Parent oversee values deferred until after
+        // function arguments have been overseen
+        deferred_oversee: (&Ast, usize, StackKey),
     ) -> Result<Int, InterpreterUpFlow> {
         let arg1 = if args.len() == 2 {
             Some(self.eval(&args[1], current_scope, stack_key)?)
@@ -865,6 +893,18 @@ impl<O: Overseer> Interpreter<O> {
         else {
             None
         };
+
+        // should be enough to defer function oversee to here
+        let (defer_ast, defer_scope, defer_key) = deferred_oversee;
+        if self.overseer
+            .oversee(&self.stack, defer_ast, defer_scope, defer_key)
+            .is_err()
+        {
+            return Err(Error(
+                BadderError::at(defer_ast.src())
+                    .describe(Stage::Interpreter, "cancelled"),
+            ));
+        }
 
         // all builtins are core lib for seq, ie first arg is a seq
         match args[0] {
