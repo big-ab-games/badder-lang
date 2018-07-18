@@ -1,9 +1,12 @@
 use super::*;
-use std::time::*;
-use std::sync::mpsc;
-use std::{thread, u32, u64};
-use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use single_value_channel;
+use std::sync::mpsc;
+use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
+use std::time::*;
+use std::{thread, u32, u64};
+
+const STACK_SIZE: usize = 8 * 1024 * 1024;
+const BADDER_STACK_LEN: usize = 200;
 
 #[derive(Clone, Debug)]
 pub struct Phase {
@@ -94,12 +97,10 @@ impl Overseer for ControllerOverseer {
                 if last.as_slice() == stack {
                     self.last_stack_copy = Some(Arc::clone(&last));
                     last
-                }
-                else {
+                } else {
                     self.replace_last_stack(stack)
                 }
-            }
-            else {
+            } else {
                 self.replace_last_stack(stack)
             }
         };
@@ -135,8 +136,7 @@ impl Overseer for ControllerOverseer {
         let pause_time = *self.pause_time.latest();
         if send_time.elapsed() >= pause_time {
             Ok(())
-        }
-        else {
+        } else {
             // block until result received
             debug!("ControllerOverseer waiting: {:?} {:?}", ast.src(), ast);
 
@@ -161,7 +161,8 @@ impl Overseer for ControllerOverseer {
 
     fn oversee_after(&mut self, _stack: &[IndexMap<Token, FrameData>], ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
-            let _ = self.to_controller
+            let _ = self
+                .to_controller
                 .send(OverseerUpdate::FinishedFunCall(id.clone()));
         }
     }
@@ -283,8 +284,7 @@ impl Controller {
     pub fn current_phase(&self) -> Option<Phase> {
         if self.cancelled {
             None
-        }
-        else {
+        } else {
             self.current_phase.clone()
         }
     }
@@ -307,8 +307,7 @@ impl Controller {
 
         if let Some(Phase { time, unpaused, .. }) = self.current_phase {
             !unpaused && time.elapsed() < self.pause_time
-        }
-        else {
+        } else {
             false
         }
     }
@@ -358,8 +357,7 @@ impl Controller {
     fn current_call_info(&self) -> Vec<SourceRef> {
         if self.cancelled {
             vec![]
-        }
-        else {
+        } else {
             self.fun_call_history.iter().rev().cloned().collect()
         }
     }
@@ -378,8 +376,7 @@ impl Controller {
     pub fn current_external_call(&self) -> Option<ExternalCall> {
         if self.cancelled {
             None
-        }
-        else {
+        } else {
             self.current_external_call.clone()
         }
     }
@@ -419,19 +416,24 @@ impl Controller {
 
         let external_function_ids = self.external_function_ids.clone();
 
-        thread::spawn(move || {
-            let overseer = ControllerOverseer {
-                next_id: 0,
-                pause_time: get_pause,
-                to_controller,
-                from_controller,
-                external_function_ids,
-                external_function_call: send_fun_call,
-                external_function_answer: recv_fun_answer,
-                last_stack_copy: None,
-            };
-            let _ = final_result.send(Interpreter::new(overseer).evaluate(&code));
-        });
+        thread::Builder::new()
+            .name("badder-exe".into())
+            .stack_size(STACK_SIZE)
+            .spawn(move || {
+                let overseer = ControllerOverseer {
+                    next_id: 0,
+                    pause_time: get_pause,
+                    to_controller,
+                    from_controller,
+                    external_function_ids,
+                    external_function_call: send_fun_call,
+                    external_function_answer: recv_fun_answer,
+                    last_stack_copy: None,
+                };
+                let _ =
+                    final_result.send(Interpreter::new(BADDER_STACK_LEN, overseer).evaluate(&code));
+            })
+            .unwrap();
     }
 }
 
@@ -464,8 +466,7 @@ impl RunStats {
                 if id != phase.id {
                     *(self.eval_counts.entry(phase.src).or_insert(0)) += 1;
                 }
-            }
-            else {
+            } else {
                 *(self.eval_counts.entry(phase.src).or_insert(0)) += 1;
             }
 

@@ -31,7 +31,6 @@ pub use common::{BadderError, SourceRef};
 
 pub type Int = i32;
 
-const MAX_STACK: usize = 50;
 const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
@@ -185,6 +184,7 @@ impl Overseer for NoOverseer {
 #[derive(Debug)]
 pub struct Interpreter<O: Overseer> {
     stack: Vec<IndexMap<Token, FrameData>>,
+    max_stack_len: usize,
     overseer: O,
 }
 
@@ -218,12 +218,12 @@ fn convert_signed_index(mut i: i32, length: usize) -> usize {
 
 impl Default for Interpreter<NoOverseer> {
     fn default() -> Interpreter<NoOverseer> {
-        Interpreter::new(NoOverseer)
+        Interpreter::new(50, NoOverseer)
     }
 }
 
 impl<O: Overseer> Interpreter<O> {
-    pub fn new(overseer: O) -> Interpreter<O> {
+    pub fn new(max_stack_len: usize, overseer: O) -> Interpreter<O> {
         let mut init_frame = IndexMap::new();
         for ext_fun in overseer.external_function_signatures() {
             init_frame.insert(ext_fun.clone(), FrameData::ExternalCallable);
@@ -232,6 +232,7 @@ impl<O: Overseer> Interpreter<O> {
         Interpreter {
             stack: vec![init_frame],
             overseer,
+            max_stack_len,
         }
     }
 
@@ -780,7 +781,7 @@ impl<O: Overseer> Interpreter<O> {
             }
             Ast::Line(scope, ref expr, ..) => {
                 let scope = max(current_scope, scope);
-                if scope > MAX_STACK {
+                if scope > self.max_stack_len {
                     return parent_error("stack overflow");
                 }
                 self.eval(expr, scope, stack_key)
