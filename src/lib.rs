@@ -9,25 +9,25 @@ extern crate string_cache;
 extern crate strsim;
 
 mod common;
+pub mod controller;
 mod lexer;
 mod parser;
-pub mod controller;
 
+use common::*;
+use indexmap::IndexMap;
 use lexer::Token::*;
 use std::cmp::*;
-use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::iter::Iterator;
 use std::mem;
 use std::sync::Arc;
-use std::{usize, i32};
-use common::*;
+use std::{i32, usize};
 use strsim::damerau_levenshtein as str_dist;
 
+pub use common::{BadderError, SourceRef};
 pub use lexer::Token;
 pub use parser::{Ast, Parser};
-pub use common::{BadderError, SourceRef};
 
 pub type Int = i32;
 
@@ -112,11 +112,9 @@ impl fmt::Debug for StackKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.access_from == self.access_up_to || self.access_from == self.access_up_to + 1 {
             write!(f, "all-frames")
-        }
-        else if self.access_up_to + 2 == self.access_from {
+        } else if self.access_up_to + 2 == self.access_from {
             write!(f, "not-frame({})", self.access_up_to + 1)
-        }
-        else {
+        } else {
             write!(
                 f,
                 "not-frame({}-{})",
@@ -192,8 +190,7 @@ pub struct Interpreter<O: Overseer> {
 fn bool_to_num(b: bool) -> Int {
     if b {
         1
-    }
-    else {
+    } else {
         0
     }
 }
@@ -237,7 +234,8 @@ impl<O: Overseer> Interpreter<O> {
     }
 
     fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey) -> String {
-        let keys: HashSet<&Token> = self.stack
+        let keys: HashSet<&Token> = self
+            .stack
             .iter()
             .enumerate()
             .filter(|&(i, _)| stack_key.can_access(i))
@@ -245,14 +243,14 @@ impl<O: Overseer> Interpreter<O> {
             .collect();
         if keys.is_empty() {
             format!("id `{:?}` not found in scope", id)
-        }
-        else {
+        } else {
             assert!(
                 !keys.contains(id),
                 "!keys.contains(id): `{:?}` is available",
                 id
             );
-            let mut available: Vec<_> = keys.iter()
+            let mut available: Vec<_> = keys
+                .iter()
                 .map(|k| k.id_str().unwrap_or("#"))
                 .filter(|k| !k.starts_with('#'))
                 .collect();
@@ -283,7 +281,8 @@ impl<O: Overseer> Interpreter<O> {
 
         let mut idx = min(self.stack.len() - 1, current_scope);
         loop {
-            if stack_key.can_access(idx) && self.stack.len() > idx
+            if stack_key.can_access(idx)
+                && self.stack.len() > idx
                 && self.stack[idx].contains_key(key)
             {
                 return Some(idx);
@@ -319,9 +318,15 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
         macro_rules! unwrap_checked {
-            ($c:expr) => { $c.map(Ok).unwrap_or_else(|| parent_error("overflow")) }
+            ($c:expr) => {
+                $c.map(Ok).unwrap_or_else(|| parent_error("overflow"))
+            };
         }
 
         match *token {
@@ -358,7 +363,11 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
 
         if eval!(expr)? == 0 {
             return Ok(0);
@@ -394,7 +403,11 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
+        macro_rules! eval_seq {
+            ($expr:expr) => {
+                self.eval_seq($expr, current_scope, stack_key)
+            };
+        }
 
         let mut list = eval_seq!(list_expr)?;
         if list.is_empty() {
@@ -435,24 +448,34 @@ impl<O: Overseer> Interpreter<O> {
         // function arguments have been overseen
         deferred_oversee: (&Ast, usize, StackKey),
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
-        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
+        macro_rules! eval_seq {
+            ($expr:expr) => {
+                self.eval_seq($expr, current_scope, stack_key)
+            };
+        }
         macro_rules! highest_frame_idx {
-            ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) }
+            ($index:expr) => {
+                self.highest_frame_idx($index, current_scope, stack_key)
+            };
         }
         macro_rules! oversee_deferred {
             ($deferred_oversee:expr) => {{
                 let (defer_ast, defer_scope, defer_key) = $deferred_oversee;
-                if self.overseer
+                if self
+                    .overseer
                     .oversee(&self.stack, defer_ast, defer_scope, defer_key)
                     .is_err()
                 {
                     return Err(Error(
-                        BadderError::at(defer_ast.src())
-                            .describe(Stage::Interpreter, "cancelled"),
+                        BadderError::at(defer_ast.src()).describe(Stage::Interpreter, "cancelled"),
                     ));
                 }
-            }}
+            }};
         }
 
         if let Some(idx) = highest_frame_idx!(id) {
@@ -494,8 +517,7 @@ impl<O: Overseer> Interpreter<O> {
                     Ast::ReferSeq(ref id, ..) => {
                         if let Some(idx) = highest_frame_idx!(id) {
                             Ref(idx, id.clone())
-                        }
-                        else {
+                        } else {
                             return parent_error(self.unknown_id_err(id, stack_key));
                         }
                     }
@@ -519,8 +541,7 @@ impl<O: Overseer> Interpreter<O> {
             // clean stack
             self.stack.pop();
             return out;
-        }
-        else {
+        } else {
             parent_error(self.unknown_id_err(id, stack_key))
         }
     }
@@ -533,7 +554,11 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
 
         if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
             let (mut idx, mut seq_id) = (idx, seq_id.clone());
@@ -556,8 +581,7 @@ impl<O: Overseer> Interpreter<O> {
                     "Invalid sequence index {} not in empty sequence",
                     actual_index
                 ));
-            }
-            else if seq_len as usize <= index {
+            } else if seq_len as usize <= index {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
                     index, seq_len
@@ -567,8 +591,7 @@ impl<O: Overseer> Interpreter<O> {
                 Sequence(ref vec, ..) => vec[index],
                 _ => unreachable!(),
             })
-        }
-        else {
+        } else {
             parent_error(self.unknown_id_err(seq_id, stack_key))
         }
     }
@@ -582,7 +605,11 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
 
         if let Some(idx) = self.highest_frame_idx(seq_id, current_scope, stack_key) {
             let (mut idx, mut seq_id) = (idx, seq_id.clone());
@@ -611,8 +638,7 @@ impl<O: Overseer> Interpreter<O> {
                 _ => unreachable!(),
             }
             Ok(0)
-        }
-        else {
+        } else {
             parent_error(self.unknown_id_err(seq_id, stack_key))
         }
     }
@@ -627,10 +653,20 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Int, InterpreterUpFlow> {
-        macro_rules! eval { ($expr:expr) => { self.eval($expr, current_scope, stack_key) } }
-        macro_rules! eval_seq {($expr:expr) => { self.eval_seq($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
+        macro_rules! eval_seq {
+            ($expr:expr) => {
+                self.eval_seq($expr, current_scope, stack_key)
+            };
+        }
         macro_rules! highest_frame_idx {
-            ($index:expr) => { self.highest_frame_idx($index, current_scope, stack_key) };
+            ($index:expr) => {
+                self.highest_frame_idx($index, current_scope, stack_key)
+            };
         }
 
         self.log_eval(ast, current_scope, stack_key);
@@ -638,8 +674,8 @@ impl<O: Overseer> Interpreter<O> {
         let mut deferred_oversee = None;
         if let Ast::Call(..) = *ast {
             deferred_oversee = Some((ast, current_scope, stack_key))
-        }
-        else if self.overseer
+        } else if self
+            .overseer
             .oversee(&self.stack, ast, current_scope, stack_key)
             .is_err()
         {
@@ -673,8 +709,7 @@ impl<O: Overseer> Interpreter<O> {
                     };
                     *self.stack[idx].get_mut(id).unwrap() = Value(v, ass_src);
                     Ok(v)
-                }
-                else {
+                } else {
                     parent_error(format!(
                         "{}, or did you mean `var {:?} =`?",
                         self.unknown_id_err(id, stack_key),
@@ -688,8 +723,7 @@ impl<O: Overseer> Interpreter<O> {
                         Value(v, ..) => Ok(v),
                         _ => parent_error(format!("Invalid reference to non number `{:?}`", id)),
                     }
-                }
-                else {
+                } else {
                     parent_error(self.unknown_id_err(id, stack_key))
                 }
             }
@@ -709,17 +743,15 @@ impl<O: Overseer> Interpreter<O> {
             Ast::While(ref expr, ref block, ..) => {
                 self.eval_while(expr, block, current_scope, stack_key)
             }
-            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => {
-                self.eval_for_in(
-                    idx_id,
-                    item_id,
-                    list_expr,
-                    block,
-                    src,
-                    current_scope,
-                    stack_key,
-                )
-            }
+            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => self.eval_for_in(
+                idx_id,
+                item_id,
+                list_expr,
+                block,
+                src,
+                current_scope,
+                stack_key,
+            ),
             Ast::LoopNav(ref token, ..) => {
                 let loop_token = Id("#loop".into());
                 if highest_frame_idx!(&loop_token).is_some() {
@@ -728,8 +760,7 @@ impl<O: Overseer> Interpreter<O> {
                         Continue => Err(LoopContinue),
                         _ => parent_error(format!("Unknown loop nav `{:?}`", token)),
                     }
-                }
-                else {
+                } else {
                     parent_error(format!("Invalid use of loop nav `{:?}`", token))
                 }
             }
@@ -751,9 +782,13 @@ impl<O: Overseer> Interpreter<O> {
                 self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block), src));
                 Ok(0)
             }
-            Ast::Call(ref id, ref args, ..) => {
-                self.eval_fun_call(id, args, current_scope, stack_key, deferred_oversee.unwrap())
-            }
+            Ast::Call(ref id, ref args, ..) => self.eval_fun_call(
+                id,
+                args,
+                current_scope,
+                stack_key,
+                deferred_oversee.unwrap(),
+            ),
             Ast::Return(ref expr, ..) => Err(FunReturn(eval!(expr)?)),
             Ast::ReferSeqIndex(ref seq_id, ref index_expr, ..) => {
                 self.eval_refer_seq_index(seq_id, index_expr, current_scope, stack_key)
@@ -811,8 +846,7 @@ impl<O: Overseer> Interpreter<O> {
                     Err(Error(
                         BadderError::at(ast.src()).describe(stage, description),
                     ))
-                }
-                else {
+                } else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
             }
@@ -826,7 +860,11 @@ impl<O: Overseer> Interpreter<O> {
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<Vec<Int>, InterpreterUpFlow> {
-        macro_rules! eval {($expr:expr) => { self.eval($expr, current_scope, stack_key) }}
+        macro_rules! eval {
+            ($expr:expr) => {
+                self.eval($expr, current_scope, stack_key)
+            };
+        }
 
         let result = match *list {
             Ast::Seq(ref exprs, ..) => {
@@ -851,8 +889,7 @@ impl<O: Overseer> Interpreter<O> {
                             data.desc(&id)
                         )),
                     }
-                }
-                else {
+                } else {
                     parent_error(self.unknown_id_err(id, stack_key))
                 }
             }
@@ -869,8 +906,7 @@ impl<O: Overseer> Interpreter<O> {
                     Err(Error(
                         BadderError::at(list.src()).describe(stage, description),
                     ))
-                }
-                else {
+                } else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
             }
@@ -890,20 +926,19 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         let arg1 = if args.len() == 2 {
             Some(self.eval(&args[1], current_scope, stack_key)?)
-        }
-        else {
+        } else {
             None
         };
 
         // should be enough to defer function oversee to here
         let (defer_ast, defer_scope, defer_key) = deferred_oversee;
-        if self.overseer
+        if self
+            .overseer
             .oversee(&self.stack, defer_ast, defer_scope, defer_key)
             .is_err()
         {
             return Err(Error(
-                BadderError::at(defer_ast.src())
-                    .describe(Stage::Interpreter, "cancelled"),
+                BadderError::at(defer_ast.src()).describe(Stage::Interpreter, "cancelled"),
             ));
         }
 
@@ -933,8 +968,7 @@ impl<O: Overseer> Interpreter<O> {
                                         "Invalid sequence index {} not in empty sequence",
                                         arg1.unwrap()
                                     ));
-                                }
-                                else if v.len() <= index {
+                                } else if v.len() <= index {
                                     return parent_error(format!(
                                         "Invalid sequence index {} not in 0..{} (or negative)",
                                         index,
@@ -950,8 +984,7 @@ impl<O: Overseer> Interpreter<O> {
                         )),
                         None => unreachable!(),
                     }
-                }
-                else {
+                } else {
                     parent_error(self.unknown_id_err(id, stack_key))
                 }
             }

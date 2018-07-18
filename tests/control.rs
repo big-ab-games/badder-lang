@@ -3,8 +3,8 @@ extern crate assert_matches;
 extern crate badder_lang;
 extern crate env_logger;
 
-use badder_lang::*;
 use badder_lang::controller::*;
+use badder_lang::*;
 use std::time::*;
 
 macro_rules! await_next_pause {
@@ -12,7 +12,6 @@ macro_rules! await_next_pause {
         $controller.refresh();
         if $controller.paused() {
             $controller.unpause();
-
         }
 
         let before = Instant::now();
@@ -24,7 +23,7 @@ macro_rules! await_next_pause {
         let phase = $controller.current_phase();
         assert!(phase.is_some(), "waited 2 seconds without pause");
         phase.unwrap()
-    }}
+    }};
 }
 
 const SRC: &str = "
@@ -213,9 +212,7 @@ fn called_from_info() {
     macro_rules! assert_called_from_line {
         ($phase:expr => $lines:expr) => {{
             let phase = $phase;
-            let simplified_actual: Vec<_> = phase.called_from.iter()
-                .map(|src| (src.0).0)
-                .collect();
+            let simplified_actual: Vec<_> = phase.called_from.iter().map(|src| (src.0).0).collect();
             let lines: Vec<usize> = $lines;
             if lines != simplified_actual {
                 println!("Unexpected called_from from phase at {:?}", phase.src);

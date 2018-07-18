@@ -1,12 +1,12 @@
 use super::Int;
-use lexer::*;
+use common::*;
 use lexer::Token::*;
+use lexer::*;
+use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::borrow::Cow;
 use string_cache::DefaultAtom as Atom;
-use common::*;
 
 /// Abstract syntax tree
 #[derive(PartialEq, Clone, Hash)]
@@ -201,8 +201,7 @@ impl Ast {
     fn line_scope(&self) -> Option<usize> {
         if let Ast::Line(scope, ..) = *self {
             Some(scope)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -278,8 +277,7 @@ impl Ast {
                 if lhs_numeric && !rhs_numeric || !lhs_numeric && rhs_numeric {
                     let and_or = if let Ast::BinOp(Or, ..) = *self {
                         "or"
-                    }
-                    else {
+                    } else {
                         "and"
                     };
 
@@ -398,8 +396,7 @@ impl<'a> Parser<'a> {
                 },
                 _ => None,
             }
-        }
-        else {
+        } else {
             None
         }
     }
@@ -411,8 +408,7 @@ impl<'a> Parser<'a> {
             let res = Ok(self.current_token.clone());
             self.next_token()?;
             res
-        }
-        else {
+        } else {
             let expected = types
                 .iter()
                 .map(|t| match t {
@@ -423,7 +419,8 @@ impl<'a> Parser<'a> {
                 .collect::<Vec<_>>()
                 .join(",");
 
-            let help_message = self.parse_fail_help()
+            let help_message = self
+                .parse_fail_help()
                 .map(|msg| Cow::Owned(format!(", {}", msg)))
                 .unwrap_or_else(|| "".into());
 
@@ -464,7 +461,8 @@ impl<'a> Parser<'a> {
 
     fn fun_call(&mut self, left: Option<Ast>, id: Token) -> Res<Ast> {
         // function call
-        let src = left.iter()
+        let src = left
+            .iter()
             .next()
             .map(|a| a.src())
             .unwrap_or(self.current_src_ref);
@@ -514,11 +512,9 @@ impl<'a> Parser<'a> {
             if self.current_token == OpnBrace {
                 // TODO handle list literals
                 self.braced()?
-            }
-            else if let Some(token) = self.consume_maybe(Num(0))? {
+            } else if let Some(token) = self.consume_maybe(Num(0))? {
                 Ast::Num(token, src)
-            }
-            else {
+            } else {
                 match self.listref()? {
                     // dot calls handled later
                     Err(ListParseEdgeCase::DotCall(list)) | Ok(Some(list)) => list,
@@ -532,15 +528,13 @@ impl<'a> Parser<'a> {
                                 }
                                 _ => unreachable!(),
                             }
-                        }
-                        else if self.consume_maybe(OpnSqr)?.is_some() {
+                        } else if self.consume_maybe(OpnSqr)?.is_some() {
                             // refer to seq index
                             let index_expr = self.expr()?;
                             let src = src.up_to_end_of(self.current_src_ref);
                             self.consume(ClsSqr)?;
                             Ast::ReferSeqIndex(id_to_seq_id(&id), index_expr.into(), src)
-                        }
-                        else {
+                        } else {
                             // refer to an id
                             Ast::Refer(id, src)
                         }
@@ -568,8 +562,7 @@ impl<'a> Parser<'a> {
             return Ok(if let Ast::Num(Num(n), _) = negated {
                 // Simplify AST for negated number literals
                 Ast::Num(Num(-n), src)
-            }
-            else {
+            } else {
                 Ast::LeftUnaryOp(Sub, negated.into(), src)
             });
         }
@@ -589,8 +582,7 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.consume_any_maybe(&[Pls, Sub])? {
             if token == Pls {
                 out = Ast::bin_op(Pls, out, self.multied()?);
-            }
-            else {
+            } else {
                 out = Ast::bin_op(Sub, out, self.multied()?);
             }
         }
@@ -604,12 +596,10 @@ impl<'a> Parser<'a> {
             if self.consume_maybe(Not)?.is_some() {
                 let is = Ast::bin_op(Is, out, self.added()?);
                 out = Ast::LeftUnaryOp(Not, is.into(), src.up_to_end_of(self.current_src_ref));
-            }
-            else {
+            } else {
                 out = Ast::bin_op(Is, out, self.added()?);
             }
-        }
-        else if let Some(token) = self.consume_any_maybe(&[Gt, Lt, GtEq, LtEq])? {
+        } else if let Some(token) = self.consume_any_maybe(&[Gt, Lt, GtEq, LtEq])? {
             out = Ast::bin_op(token, out, self.added()?);
         }
         Ok(out)
@@ -623,8 +613,7 @@ impl<'a> Parser<'a> {
                 self.compared()?.into(),
                 src.up_to_end_of(self.current_src_ref),
             ))
-        }
-        else {
+        } else {
             self.compared()
         }
     }
@@ -668,8 +657,7 @@ impl<'a> Parser<'a> {
         let (expr, is_else) = {
             if self.consume_maybe(If)?.is_some() {
                 (self.expr()?, false)
-            }
-            else {
+            } else {
                 let src = src.up_to_end_of(self.current_src_ref);
                 self.consume(Else)?;
                 (
@@ -718,8 +706,7 @@ impl<'a> Parser<'a> {
         let (while_expr, for_stuff) = {
             if self.consume_maybe(While)?.is_some() {
                 (self.expr()?, None)
-            }
-            else if self.consume_maybe(For)?.is_some() {
+            } else if self.consume_maybe(For)?.is_some() {
                 let mut idx_id = Some(self.consume(Id("identifier".into()))?);
                 let item_id = match self.consume_maybe(Comma)? {
                     Some(_) => self.consume(Id("identifier".into()))?,
@@ -732,8 +719,7 @@ impl<'a> Parser<'a> {
                     Ast::Empty(src.up_to_end_of(self.current_src_ref)),
                     Some((idx_id, item_id, list)),
                 )
-            }
-            else {
+            } else {
                 self.consume(Loop)?;
                 (Ast::num(1, src.up_to_end_of(self.current_src_ref)), None)
             }
@@ -742,8 +728,7 @@ impl<'a> Parser<'a> {
         let loop_allow = {
             if allow.contains(&Break) && allow.contains(&Continue) {
                 allow
-            }
-            else {
+            } else {
                 let mut extended = vec![Break, Continue];
                 extended.extend_from_slice(allow.as_slice());
                 extended.into()
@@ -766,8 +751,7 @@ impl<'a> Parser<'a> {
         Ok(if let Some((idx_id, item_id, list)) = for_stuff {
             let src = src.up_to_end_of(list.src());
             Ast::ForIn(idx_id, item_id, list.into(), block.unwrap().into(), src)
-        }
-        else {
+        } else {
             let src = src.up_to_end_of(while_expr.src());
             Ast::While(while_expr.into(), block.unwrap().into(), src)
         })
@@ -791,8 +775,7 @@ impl<'a> Parser<'a> {
             if self.consume_maybe(Square)?.is_some() {
                 arg = id_to_seq_id(&arg);
                 signature += "s"
-            }
-            else {
+            } else {
                 signature += "v";
             }
             arg_ids.push(arg);
@@ -842,8 +825,7 @@ impl<'a> Parser<'a> {
                     Ast::ReferSeq(id_to_seq_id(&id), src.up_to_end_of(self.current_src_ref));
                 return if self.current_token == Dot {
                     Ok(Err(ListParseEdgeCase::DotCall(refer)))
-                }
-                else {
+                } else {
                     Ok(Ok(Some(refer)))
                 };
             }
@@ -882,8 +864,7 @@ impl<'a> Parser<'a> {
         self.consume(Square)?;
         Ok(if self.consume_maybe(Ass)?.is_some() {
             Ast::AssignSeq(seq_id, self.list()?.into(), src.up_to(self.current_src_ref))
-        }
-        else {
+        } else {
             let src = src.up_to(self.current_src_ref);
             Ast::AssignSeq(seq_id, Ast::Seq(vec![], src).into(), src)
         })
@@ -902,8 +883,7 @@ impl<'a> Parser<'a> {
                         let return_expr = self.expr()?;
                         self.consume(Eol)?;
                         return_expr
-                    }
-                    else {
+                    } else {
                         Ast::num(0, self.current_src_ref)
                     }
                 };
@@ -1033,8 +1013,7 @@ impl<'a> Parser<'a> {
                 let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
                 let hint = if expected_scope > scope {
                     format!("try adding {}", expected_scope - scope)
-                }
-                else {
+                } else {
                     format!("try removing {}", scope - expected_scope)
                 };
                 return Err(BadderError::at(indent_src_ref).describe(
@@ -1148,13 +1127,16 @@ mod parser_test {
         ($left:expr, $right:expr) => {{
             let src = $left.src();
             if src != $right {
-                println!("Unexpected src for `{}`, `{:?}` != `{:?}`",
-                         $left.debug_string(),
-                         src,
-                         $right);
+                println!(
+                    "Unexpected src for `{}`, `{:?}` != `{:?}`",
+                    $left.debug_string(),
+                    src,
+                    $right
+                );
                 false
+            } else {
+                true
             }
-            else { true }
         }};
     }
 
@@ -1171,15 +1153,15 @@ mod parser_test {
         ($ast:ident = $pat:pat) => {
             match $ast {
                 $pat => $ast,
-                _ => panic!("Unexpected {}", $ast.debug_string())
+                _ => panic!("Unexpected {}", $ast.debug_string()),
             }
         };
-        ($ast:ident = $pat:pat, src = $src:expr) => {{
+        ($ast:ident = $pat:pat,src = $src:expr) => {{
             let src_eq = src_eq!($ast, $src);
             #[allow(match_ref_pats)]
             let out = match $ast {
                 $pat => $ast,
-                _ => panic!("Unexpected {}", $ast.debug_string())
+                _ => panic!("Unexpected {}", $ast.debug_string()),
             };
             if !src_eq {
                 assert!(false, "Unexpected SourceRef");
@@ -1192,35 +1174,35 @@ mod parser_test {
         ($ast:ident) => {
             match $ast {
                 Ast::LinePair(l1, l2, ..) => (*l1, *l2),
-                _ => panic!("Unexpected {}", $ast.debug_string())
+                _ => panic!("Unexpected {}", $ast.debug_string()),
             }
-        }
+        };
     }
 
     macro_rules! expect_bin_op {
-        ($ast:ident, src = $src:expr) => {{
+        ($ast:ident,src = $src:expr) => {{
             src_eq!($ast, $src); // just print
             match $ast {
                 Ast::BinOp(_, left, right, src) => {
                     assert_eq!(src, $src);
                     (*left, *right)
-                },
-                _ => panic!("Unexpected {}", $ast.debug_string())
+                }
+                _ => panic!("Unexpected {}", $ast.debug_string()),
             }
-        }}
+        }};
     }
 
     macro_rules! expect_if_ast {
-        ($ast:ident, src = $src:expr) => {{
+        ($ast:ident,src = $src:expr) => {{
             src_eq!($ast, $src); // just print
             match $ast {
                 Ast::If(expr, block, elif, _, src) => {
                     assert_eq!(src, $src);
                     (*expr, block.as_ref().clone(), elif.map(|boxed| *boxed))
                 }
-                _ => panic!("Unexpected {}", $ast.debug_string())
+                _ => panic!("Unexpected {}", $ast.debug_string()),
             }
-        }}
+        }};
     }
 
     #[test]
@@ -1271,16 +1253,17 @@ mod parser_test {
     fn if_else_src_ref() {
         let _ = env_logger::try_init();
 
-        let ast = Parser::parse_str(&vec![
-            "var a = 123",
-            "if a > 100",
-            "    a *= 2",
-            "else if a > 50",
-            "    a = a / 3",
-            "else",
-            "    a += 32",
-        ].join("\n"))
-            .unwrap();
+        let ast = Parser::parse_str(
+            &vec![
+                "var a = 123",
+                "if a > 100",
+                "    a *= 2",
+                "else if a > 50",
+                "    a = a / 3",
+                "else",
+                "    a += 32",
+            ].join("\n"),
+        ).unwrap();
 
         let (ast, next) = expect_line_pair!(ast);
 
@@ -1356,12 +1339,13 @@ mod parser_test {
     fn fun_src_ref() {
         let _ = env_logger::try_init();
 
-        let ast = Parser::parse_str(&vec![
-            "fun double(x)",
-            "    return x * 2 # used return to test it, also this comment",
-            "double(2.double())",
-        ].join("\n"))
-            .unwrap();
+        let ast = Parser::parse_str(
+            &vec![
+                "fun double(x)",
+                "    return x * 2 # used return to test it, also this comment",
+                "double(2.double())",
+            ].join("\n"),
+        ).unwrap();
 
         let (ast, next) = expect_line_pair!(ast);
 
@@ -1394,11 +1378,12 @@ mod parser_test {
     fn parse_error() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec![
-            "fum double(x)", // `fun` misspelled -> id
-            "    return x * 2",
-        ].join("\n"))
-            .expect_err("parse");
+        let err = Parser::parse_str(
+            &vec![
+                "fum double(x)", // `fun` misspelled -> id
+                "    return x * 2",
+            ].join("\n"),
+        ).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1417,11 +1402,12 @@ mod helpful_error {
     fn reversed_greater_or_equal() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec![
-            "if 12 => 11", // `=>` misspelled
-            "    0",
-        ].join("\n"))
-            .expect_err("parse");
+        let err = Parser::parse_str(
+            &vec![
+                "if 12 => 11", // `=>` misspelled
+                "    0",
+            ].join("\n"),
+        ).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1436,11 +1422,12 @@ mod helpful_error {
     fn reversed_less_than_or_equal() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec![
-            "if 12 =< 11", // `=>` misspelled
-            "    0",
-        ].join("\n"))
-            .expect_err("parse");
+        let err = Parser::parse_str(
+            &vec![
+                "if 12 =< 11", // `=>` misspelled
+                "    0",
+            ].join("\n"),
+        ).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1549,27 +1536,29 @@ mod issues {
     #[test]
     fn return_in_function_body_with_loops() {
         let _ = env_logger::try_init();
-        Parser::parse_str(&vec![
-            "fun some_func()",
-            "    for i in 1,2,3",
-            "        if i > 4",
-            "            return 234",
-            "    return 123",
-            "some_func()",
-        ].join("\n"))
-            .expect("parse");
+        Parser::parse_str(
+            &vec![
+                "fun some_func()",
+                "    for i in 1,2,3",
+                "        if i > 4",
+                "            return 234",
+                "    return 123",
+                "some_func()",
+            ].join("\n"),
+        ).expect("parse");
     }
 
     #[test]
     fn seq_nested_dot_calling() {
         let _ = env_logger::try_init();
-        Parser::parse_str(&vec![
-            "fun plus(a1, a2)",
-            "    a1 + a2",
-            "seq list[]",
-            "list[].add(list[].size().plus(123))",
-        ].join("\n"))
-            .expect("parse");
+        Parser::parse_str(
+            &vec![
+                "fun plus(a1, a2)",
+                "    a1 + a2",
+                "seq list[]",
+                "list[].add(list[].size().plus(123))",
+            ].join("\n"),
+        ).expect("parse");
     }
 
     #[test]
@@ -1605,26 +1594,28 @@ mod issues {
     #[test]
     fn boolean_mix_expr_number_literal() {
         let _ = env_logger::try_init();
-        let err = Parser::parse_str(&vec![
-            "var x = 4",
-            "if x is 1 or 2", // misuse of boolean operator
-            "    x += 1",
-            "x",
-        ].join("\n"))
-            .expect_err("did not fail parse");
+        let err = Parser::parse_str(
+            &vec![
+                "var x = 4",
+                "if x is 1 or 2", // misuse of boolean operator
+                "    x += 1",
+                "x",
+            ].join("\n"),
+        ).expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((2, 4), (2, 15)));
         assert!(err.description.contains("or"));
 
-        let err = Parser::parse_str(&vec![
-            "var x = 4",
-            "if 2 or x is 1 and 3", // misuse of boolean operator
-            "    x += 1",
-            "x",
-        ].join("\n"))
-            .expect_err("did not fail parse");
+        let err = Parser::parse_str(
+            &vec![
+                "var x = 4",
+                "if 2 or x is 1 and 3", // misuse of boolean operator
+                "    x += 1",
+                "x",
+            ].join("\n"),
+        ).expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
 

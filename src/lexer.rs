@@ -1,10 +1,10 @@
 use super::Int;
+use common::*;
+use std::borrow::Cow;
 use std::fmt;
 use std::iter::Peekable;
-use std::borrow::Cow;
 use std::str::Chars;
 use string_cache::DefaultAtom as Atom;
-use common::*;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub enum Token {
@@ -182,8 +182,7 @@ impl Token {
     pub fn id_str(&self) -> Option<&str> {
         if let Token::Id(ref inner) = *self {
             Some(inner)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -235,8 +234,7 @@ impl<'a> Lexer<'a> {
         if self.newline {
             self.line_num += 1;
             self.char_num = 1;
-        }
-        else {
+        } else {
             self.char_num += 1;
         }
 
@@ -376,8 +374,7 @@ impl<'a> Lexer<'a> {
             while let Some(c) = self.next_char() {
                 if c.is_digit(10) {
                     number_str.push(c);
-                }
-                else {
+                } else {
                     break;
                 }
             }
@@ -395,8 +392,7 @@ impl<'a> Lexer<'a> {
             while let Some(c) = self.next_char() {
                 if id_char(c) {
                     id.push(c);
-                }
-                else {
+                } else {
                     break;
                 }
             }
