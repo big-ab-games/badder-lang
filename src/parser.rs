@@ -402,7 +402,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_any(&mut self, types: &[Token]) -> Res<Token> {
-        assert!(self.unused_lines.is_empty());
+        debug_assert!(self.unused_lines.is_empty());
 
         if types.iter().any(|t| t.matches(&self.current_token)) {
             let res = Ok(self.current_token.clone());
@@ -441,7 +441,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_any_maybe(&mut self, types: &[Token]) -> Res<Option<Token>> {
-        assert!(self.unused_lines.is_empty());
+        debug_assert!(self.unused_lines.is_empty());
 
         if types.iter().any(|t| t.matches(&self.current_token)) {
             let res = Ok(Some(self.current_token.clone()));

@@ -184,7 +184,7 @@ impl Overseer for ControllerOverseer {
         match self.external_function_answer.recv() {
             Ok(result) => result,
             Err(err) => {
-                debug!("ControllerOverseer cancelling: {:?}", err);
+                warn!("ControllerOverseer cancelling: {:?}", err);
                 Err("cancelled".into())
             }
         }
@@ -326,8 +326,33 @@ impl Controller {
             return true;
         }
 
+        let mut change = self.refresh_overseer_updates();
+
+        if let Ok(call) = self.external_function_call.try_recv() {
+            // refresh overseer updates again in case the external call
+            // occurred just after the last `refresh_overseer_updates` call
+            // call before setting `current_external_call` as it has an assert
+            self.refresh_overseer_updates();
+            
+            self.current_external_call = Some(call);
+            change = true;
+        }
+
+        change
+    }
+
+    /// Returns if a change occurred
+    #[inline]
+    fn refresh_overseer_updates(&mut self) -> bool {
         let mut change = false;
         while let Ok(update) = self.from_overseer.try_recv() {
+            debug_assert!(
+                self.current_external_call.is_none(),
+                "Update received during external call: {:?}\nupdate: {:?}",
+                self.current_external_call,
+                update,
+            );
+
             match update {
                 OverseerUpdate::Phase(mut phase) => {
                     phase.called_from = self.current_call_info();
@@ -345,12 +370,6 @@ impl Controller {
             };
             change = true;
         }
-
-        if let Ok(call) = self.external_function_call.try_recv() {
-            self.current_external_call = Some(call);
-            change = true;
-        }
-
         change
     }
 
