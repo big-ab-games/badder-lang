@@ -184,7 +184,7 @@ impl Overseer for ControllerOverseer {
         match self.external_function_answer.recv() {
             Ok(result) => result,
             Err(err) => {
-                warn!("ControllerOverseer cancelling: {:?}", err);
+                debug!("ControllerOverseer cancelling: {:?}", err);
                 Err("cancelled".into())
             }
         }
@@ -333,7 +333,7 @@ impl Controller {
             // occurred just after the last `refresh_overseer_updates` call
             // call before setting `current_external_call` as it has an assert
             self.refresh_overseer_updates();
-            
+
             self.current_external_call = Some(call);
             change = true;
         }
