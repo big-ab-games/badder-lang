@@ -17,7 +17,7 @@ pub struct Phase {
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
     unpaused: bool,
-    pub stack: Arc<Vec<IndexMap<Token, FrameData>>>,
+    pub stack: Arc<Vec<FxIndexMap<Token, FrameData>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,7 +52,7 @@ struct ControllerOverseer {
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
     external_function_answer: mpsc::Receiver<Result<Int, String>>,
-    last_stack_copy: Option<Arc<Vec<IndexMap<Token, FrameData>>>>,
+    last_stack_copy: Option<Arc<Vec<FxIndexMap<Token, FrameData>>>>,
 }
 
 fn interested_in(ast: &Ast) -> bool {
@@ -67,8 +67,8 @@ fn interested_in(ast: &Ast) -> bool {
 impl ControllerOverseer {
     fn replace_last_stack(
         &mut self,
-        stack: &[IndexMap<Token, FrameData>],
-    ) -> Arc<Vec<IndexMap<Token, FrameData>>> {
+        stack: &[FxIndexMap<Token, FrameData>],
+    ) -> Arc<Vec<FxIndexMap<Token, FrameData>>> {
         let last: Arc<Vec<_>> = Arc::new(stack.into());
         self.last_stack_copy = Some(Arc::clone(&last));
         last
@@ -78,7 +78,7 @@ impl ControllerOverseer {
 impl Overseer for ControllerOverseer {
     fn oversee(
         &mut self,
-        stack: &[IndexMap<Token, FrameData>], // Cow?
+        stack: &[FxIndexMap<Token, FrameData>], // Cow?
         ast: &Ast,
         _current_scope: usize,
         _stack_key: StackKey,
@@ -159,7 +159,7 @@ impl Overseer for ControllerOverseer {
         }
     }
 
-    fn oversee_after(&mut self, _stack: &[IndexMap<Token, FrameData>], ast: &Ast) {
+    fn oversee_after(&mut self, _stack: &[FxIndexMap<Token, FrameData>], ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
             let _ = self
                 .to_controller

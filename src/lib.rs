@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate log;
 extern crate indexmap;
+extern crate rustc_hash;
 extern crate single_value_channel;
 extern crate string_cache;
 extern crate strsim;
@@ -16,9 +17,11 @@ mod parser;
 use common::*;
 use indexmap::IndexMap;
 use lexer::Token::*;
+use rustc_hash::FxHasher;
 use std::cmp::*;
 use std::collections::HashSet;
 use std::fmt;
+use std::hash::BuildHasherDefault;
 use std::iter::Iterator;
 use std::mem;
 use std::sync::Arc;
@@ -30,6 +33,8 @@ pub use lexer::Token;
 pub use parser::{Ast, Parser};
 
 pub type Int = i32;
+
+pub type FxIndexMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
 
 const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
 
@@ -87,7 +92,7 @@ impl FrameData {
         }
     }
 
-    fn add_builtins_to(frame: &mut IndexMap<Token, FrameData>) {
+    fn add_builtins_to(frame: &mut FxIndexMap<Token, FrameData>) {
         frame.insert(Id("size(s)".into()), BuiltinCallable(Builtin::Size));
         frame.insert(Id("add(sv)".into()), BuiltinCallable(Builtin::SeqAdd));
         frame.insert(Id("remove(sv)".into()), BuiltinCallable(Builtin::SeqRemove));
@@ -144,13 +149,13 @@ use InterpreterUpFlow::*;
 pub trait Overseer {
     fn oversee(
         &mut self,
-        stack: &[IndexMap<Token, FrameData>],
+        stack: &[FxIndexMap<Token, FrameData>],
         ast: &Ast,
         current_scope: usize,
         stack_key: StackKey,
     ) -> Result<(), ()>;
 
-    fn oversee_after(&mut self, _stack: &[IndexMap<Token, FrameData>], _ast: &Ast) {}
+    fn oversee_after(&mut self, _stack: &[FxIndexMap<Token, FrameData>], _ast: &Ast) {}
 
     fn external_function_signatures(&self) -> &[Token];
 
@@ -162,7 +167,7 @@ pub struct NoOverseer;
 impl Overseer for NoOverseer {
     fn oversee(
         &mut self,
-        _stack: &[IndexMap<Token, FrameData>],
+        _stack: &[FxIndexMap<Token, FrameData>],
         _: &Ast,
         _: usize,
         _: StackKey,
@@ -181,7 +186,7 @@ impl Overseer for NoOverseer {
 
 #[derive(Debug)]
 pub struct Interpreter<O: Overseer> {
-    stack: Vec<IndexMap<Token, FrameData>>,
+    stack: Vec<FxIndexMap<Token, FrameData>>,
     max_stack_len: usize,
     overseer: O,
 }
@@ -221,7 +226,7 @@ impl Default for Interpreter<NoOverseer> {
 
 impl<O: Overseer> Interpreter<O> {
     pub fn new(max_stack_len: usize, overseer: O) -> Interpreter<O> {
-        let mut init_frame = IndexMap::new();
+        let mut init_frame = IndexMap::default();
         for ext_fun in overseer.external_function_signatures() {
             init_frame.insert(ext_fun.clone(), FrameData::ExternalCallable);
         }
@@ -375,7 +380,7 @@ impl<O: Overseer> Interpreter<O> {
         let loop_token = Id("#loop".into());
         self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
         loop {
-            self.stack.push(IndexMap::new());
+            self.stack.push(IndexMap::default());
             let eval = self.eval(block, current_scope + 1, stack_key);
             self.stack.pop();
             match eval {
@@ -417,7 +422,7 @@ impl<O: Overseer> Interpreter<O> {
         self.stack[current_scope].insert(loop_token.clone(), LoopMarker);
         let mut index = 0;
         while index < list.len() {
-            let mut frame = IndexMap::new();
+            let mut frame = IndexMap::default();
             if let Some(ref id) = *idx_id {
                 frame.insert(id.clone(), Value(index as i32, src));
             }
@@ -510,7 +515,7 @@ impl<O: Overseer> Interpreter<O> {
             };
 
             // construct new function call stack frame
-            let mut f_frame = IndexMap::new();
+            let mut f_frame = IndexMap::default();
             for i in 0..args.len() {
                 let data = match args[i] {
                     ref a @ Ast::Seq(..) => Sequence(eval_seq!(a)?, src),
@@ -733,7 +738,7 @@ impl<O: Overseer> Interpreter<O> {
                     None => 0,
                 },
                 _ => {
-                    self.stack.push(IndexMap::new());
+                    self.stack.push(IndexMap::default());
                     let eval = self.eval(block, current_scope + 1, stack_key);
                     self.stack.pop();
                     eval?;
