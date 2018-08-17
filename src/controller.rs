@@ -51,7 +51,7 @@ struct ControllerOverseer {
     from_controller: mpsc::Receiver<Result<u64, ()>>,
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
-    external_function_answer: mpsc::Receiver<Result<Int, String>>,
+    external_function_answer: mpsc::Receiver<Result<(Int, IntFlag), String>>,
     last_stack_copy: Option<Arc<Vec<FxIndexMap<Token, FrameData>>>>,
 }
 
@@ -115,8 +115,7 @@ impl Overseer for ControllerOverseer {
                 unpaused: false,
                 time: send_time,
                 stack,
-            }))
-            .expect("send");
+            })).expect("send");
 
         let mut recv = self.from_controller.try_recv();
         while recv != Err(TryRecvError::Empty) {
@@ -171,7 +170,11 @@ impl Overseer for ControllerOverseer {
         &self.external_function_ids
     }
 
-    fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String> {
+    fn call_external_function(
+        &mut self,
+        id: Token,
+        args: Vec<(Int, IntFlag)>,
+    ) -> Result<(Int, IntFlag), String> {
         debug!(
             "ControllerOverseer awaiting answer: {:?}, args {:?}",
             id, args
@@ -209,7 +212,7 @@ pub struct Controller {
     to_overseer: mpsc::Sender<Result<u64, ()>>,
     overseer_pause: single_value_channel::Updater<Duration>,
     external_function_call: mpsc::Receiver<ExternalCall>,
-    external_function_answer: mpsc::Sender<Result<Int, String>>,
+    external_function_answer: mpsc::Sender<Result<(Int, IntFlag), String>>,
 }
 
 impl Controller {
@@ -400,7 +403,7 @@ impl Controller {
         }
     }
 
-    pub fn answer_external_call(&mut self, result: Result<Int, String>) {
+    pub fn answer_external_call(&mut self, result: Result<(Int, IntFlag), String>) {
         self.current_external_call = None;
         if let Err(err) = self.external_function_answer.send(result) {
             warn!(
@@ -451,15 +454,14 @@ impl Controller {
                 };
                 let _ =
                     final_result.send(Interpreter::new(BADDER_STACK_LEN, overseer).evaluate(&code));
-            })
-            .unwrap();
+            }).unwrap();
     }
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct ExternalCall {
     pub id: Token,
-    pub args: Vec<Int>,
+    pub args: Vec<(Int, IntFlag)>,
 }
 
 impl ExternalCall {

@@ -32,11 +32,15 @@ pub use common::{BadderError, SourceRef};
 pub use lexer::Token;
 pub use parser::{Ast, Parser};
 
+/// Signed 32-bit integer that is the only value type.
 pub type Int = i32;
-
+/// Flat stored along with a value in the stack.
+pub type IntFlag = u8;
 pub type FxIndexMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
 
-const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
+pub(crate) const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
+
+pub(crate) const NO_FLAG: IntFlag = 0;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum Builtin {
@@ -47,7 +51,7 @@ pub enum Builtin {
 
 #[derive(Clone, Hash, PartialEq)]
 pub enum FrameData {
-    Value(Int, SourceRef),
+    Value(Int, IntFlag, SourceRef),
     /// Callable(args, block)
     Callable(Vec<Token>, Arc<Ast>, SourceRef),
     /// Callables built into the interpreter
@@ -57,7 +61,7 @@ pub enum FrameData {
     ///Ref(frame_index, id)
     Ref(usize, Token),
     /// Sequence of values
-    Sequence(Vec<Int>, SourceRef),
+    Sequence(Vec<(Int, IntFlag)>, SourceRef),
     LoopMarker,
 }
 
@@ -104,7 +108,9 @@ enum InterpreterUpFlow {
     Error(BadderError),
     LoopBreak,
     LoopContinue,
-    FunReturn(Int),
+    FunReturn(Int, IntFlag),
+    /// Value with some flag data
+    Flagged(Int, IntFlag),
 }
 
 #[derive(Clone, Copy, Default)]
@@ -159,7 +165,11 @@ pub trait Overseer {
 
     fn external_function_signatures(&self) -> &[Token];
 
-    fn call_external_function(&mut self, id: Token, args: Vec<Int>) -> Result<Int, String>;
+    fn call_external_function(
+        &mut self,
+        id: Token,
+        args: Vec<(Int, IntFlag)>,
+    ) -> Result<(Int, IntFlag), String>;
 }
 
 pub struct NoOverseer;
@@ -179,7 +189,11 @@ impl Overseer for NoOverseer {
         &[]
     }
 
-    fn call_external_function(&mut self, id: Token, _: Vec<Int>) -> Result<Int, String> {
+    fn call_external_function(
+        &mut self,
+        id: Token,
+        _: Vec<(Int, IntFlag)>,
+    ) -> Result<(Int, IntFlag), String> {
         Err(format!("Unknown external function {:?}", id))
     }
 }
@@ -325,7 +339,10 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
         macro_rules! unwrap_checked {
@@ -345,11 +362,18 @@ impl<O: Overseer> Interpreter<O> {
             },
             And => match eval!(left)? {
                 0 => Ok(0),
-                _ => eval!(right),
+                _ => {
+                    // allow flagged return
+                    self.eval(right, current_scope, stack_key)
+                }
             },
-            Or => match eval!(left)? {
-                0 => eval!(right),
-                x => Ok(x),
+            Or => match eval!(left; with_flag)? {
+                (0, _) => {
+                    // allow flagged return
+                    self.eval(right, current_scope, stack_key)
+                }
+                (v, 0) => Ok(v),
+                (v, flag) => Err(Flagged(v, flag)),
             },
             Is => Ok(bool_to_num(eval!(left)? == eval!(right)?)),
             Gt => Ok(bool_to_num(eval!(left)? > eval!(right)?)),
@@ -370,7 +394,7 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
             };
         }
 
@@ -385,7 +409,7 @@ impl<O: Overseer> Interpreter<O> {
             self.stack.pop();
             match eval {
                 Err(LoopBreak) => break,
-                Ok(_) | Err(LoopContinue) => (),
+                Ok(_) | Err(Flagged(..)) | Err(LoopContinue) => (),
                 err @ Err(_) => return err,
             };
             if eval!(expr)? == 0 {
@@ -424,15 +448,16 @@ impl<O: Overseer> Interpreter<O> {
         while index < list.len() {
             let mut frame = IndexMap::default();
             if let Some(ref id) = *idx_id {
-                frame.insert(id.clone(), Value(index as i32, src));
+                frame.insert(id.clone(), Value(index as i32, NO_FLAG, src));
             }
-            frame.insert(item_id.clone(), Value(list[index], src));
+            let (v, flag) = list[index];
+            frame.insert(item_id.clone(), Value(v, flag, src));
             self.stack.push(frame);
             let eval = self.eval(block, current_scope + 1, stack_key);
             self.stack.pop();
             match eval {
                 Err(LoopBreak) => break,
-                Ok(_) | Err(LoopContinue) => (),
+                Ok(_) | Err(Flagged(..)) | Err(LoopContinue) => (),
                 err @ Err(_) => return err,
             };
             index += 1;
@@ -455,7 +480,10 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
         macro_rules! eval_seq {
@@ -495,7 +523,7 @@ impl<O: Overseer> Interpreter<O> {
             if self.stack[idx][id] == ExternalCallable {
                 let mut evaluated_args = vec![];
                 for arg in args {
-                    evaluated_args.push(eval!(arg)?);
+                    evaluated_args.push(eval!(arg; with_flag)?);
                 }
 
                 oversee_deferred!(deferred_oversee);
@@ -526,7 +554,10 @@ impl<O: Overseer> Interpreter<O> {
                             return parent_error(self.unknown_id_err(id, stack_key));
                         }
                     }
-                    ref ast => Value(eval!(ast)?, src),
+                    ref ast => {
+                        let (v, flag) = eval!(ast; with_flag)?;
+                        Value(v, flag, src)
+                    }
                 };
                 f_frame.insert(mem::replace(&mut arg_ids[i], Eol), data);
             }
@@ -538,8 +569,8 @@ impl<O: Overseer> Interpreter<O> {
                 current_scope + 1,
                 StackKey::from_fun_call(idx, current_scope),
             ) {
-                Err(FunReturn(value)) => Ok(value),
-                Ok(x) => Ok(x),
+                Ok(x) | Err(FunReturn(x, 0)) => Ok(x),
+                Err(FunReturn(value, flag)) => Err(Flagged(value, flag)),
                 x => x,
             };
 
@@ -561,7 +592,10 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
 
@@ -593,7 +627,10 @@ impl<O: Overseer> Interpreter<O> {
                 ));
             }
             Ok(match self.stack[idx][&seq_id] {
-                Sequence(ref vec, ..) => vec[index],
+                Sequence(ref vec, ..) => match vec[index] {
+                    (v, 0) => v,
+                    (v, flag) => return Err(Flagged(v, flag)),
+                },
                 _ => unreachable!(),
             })
         } else {
@@ -612,7 +649,10 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
 
@@ -637,7 +677,7 @@ impl<O: Overseer> Interpreter<O> {
                     index, seq_len
                 ));
             }
-            let new_val = eval!(expr)?;
+            let new_val = eval!(expr; with_flag)?;
             match self.stack[idx].get_mut(&seq_id) {
                 Some(&mut Sequence(ref mut vec, ..)) => vec[index] = new_val,
                 _ => unreachable!(),
@@ -660,7 +700,10 @@ impl<O: Overseer> Interpreter<O> {
     ) -> Result<Int, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
         macro_rules! eval_seq {
@@ -700,19 +743,19 @@ impl<O: Overseer> Interpreter<O> {
                 _ => 0,
             }),
             Ast::Assign(ref id, ref expr, src) => {
-                let v = eval!(expr)?;
-                self.stack[current_scope].insert(id.clone(), Value(v, src));
+                let (v, flag) = eval!(expr; with_flag)?;
+                self.stack[current_scope].insert(id.clone(), Value(v, flag, src));
                 Ok(v)
             }
             Ast::Reassign(ref id, ref expr, ..) => {
                 // reassign to any parent scope
                 if let Some(idx) = highest_frame_idx!(id) {
-                    let v = eval!(expr)?;
+                    let (v, flag) = eval!(expr; with_flag)?;
                     let ass_src = match self.stack[idx][id] {
                         Value(.., src) => src,
                         _ => unreachable!(),
                     };
-                    *self.stack[idx].get_mut(id).unwrap() = Value(v, ass_src);
+                    *self.stack[idx].get_mut(id).unwrap() = Value(v, flag, ass_src);
                     Ok(v)
                 } else {
                     parent_error(format!(
@@ -725,7 +768,7 @@ impl<O: Overseer> Interpreter<O> {
             Ast::Refer(ref id, ..) => {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
-                        Value(v, ..) => Ok(v),
+                        Value(v, flag, ..) => Err(InterpreterUpFlow::Flagged(v, flag)),
                         _ => parent_error(format!("Invalid reference to non number `{:?}`", id)),
                     }
                 } else {
@@ -739,7 +782,7 @@ impl<O: Overseer> Interpreter<O> {
                 },
                 _ => {
                     self.stack.push(IndexMap::default());
-                    let eval = self.eval(block, current_scope + 1, stack_key);
+                    let eval = self.eval(block, current_scope + 1, stack_key).ignore_flag();
                     self.stack.pop();
                     eval?;
                     0
@@ -794,7 +837,10 @@ impl<O: Overseer> Interpreter<O> {
                 stack_key,
                 deferred_oversee.unwrap(),
             ),
-            Ast::Return(ref expr, ..) => Err(FunReturn(eval!(expr)?)),
+            Ast::Return(ref expr, ..) => {
+                let (v, flag) = eval!(expr; with_flag)?;
+                Err(FunReturn(v, flag))
+            }
             Ast::ReferSeqIndex(ref seq_id, ref index_expr, ..) => {
                 self.eval_refer_seq_index(seq_id, index_expr, current_scope, stack_key)
             }
@@ -824,7 +870,7 @@ impl<O: Overseer> Interpreter<O> {
                 if scope > self.max_stack_len {
                     return parent_error("stack overflow");
                 }
-                self.eval(expr, scope, stack_key)
+                self.eval(expr, scope, stack_key).ignore_flag()
             }
             Ast::LinePair(ref line, ref next_line, ..) => {
                 eval!(line)?;
@@ -864,10 +910,13 @@ impl<O: Overseer> Interpreter<O> {
         list: &Ast,
         current_scope: usize,
         stack_key: StackKey,
-    ) -> Result<Vec<Int>, InterpreterUpFlow> {
+    ) -> Result<Vec<(Int, IntFlag)>, InterpreterUpFlow> {
         macro_rules! eval {
             ($expr:expr) => {
-                self.eval($expr, current_scope, stack_key)
+                self.eval($expr, current_scope, stack_key).ignore_flag()
+            };
+            ($expr:expr; with_flag) => {
+                self.eval($expr, current_scope, stack_key).extract_flag()
             };
         }
 
@@ -875,7 +924,7 @@ impl<O: Overseer> Interpreter<O> {
             Ast::Seq(ref exprs, ..) => {
                 let mut evals = vec![];
                 for ex in exprs {
-                    evals.push(eval!(ex)?);
+                    evals.push(eval!(ex; with_flag)?);
                 }
                 Ok(evals)
             }
@@ -930,7 +979,10 @@ impl<O: Overseer> Interpreter<O> {
         deferred_oversee: (&Ast, usize, StackKey),
     ) -> Result<Int, InterpreterUpFlow> {
         let arg1 = if args.len() == 2 {
-            Some(self.eval(&args[1], current_scope, stack_key)?)
+            Some(
+                self.eval(&args[1], current_scope, stack_key)
+                    .extract_flag()?,
+            )
         } else {
             None
         };
@@ -967,11 +1019,11 @@ impl<O: Overseer> Interpreter<O> {
                                 Ok(0)
                             }
                             Builtin::SeqRemove => {
-                                let index = convert_signed_index(arg1.unwrap(), v.len());
+                                let index = convert_signed_index(arg1.unwrap().0, v.len());
                                 if v.is_empty() {
                                     return parent_error(format!(
                                         "Invalid sequence index {} not in empty sequence",
-                                        arg1.unwrap()
+                                        index
                                     ));
                                 } else if v.len() <= index {
                                     return parent_error(format!(
@@ -980,7 +1032,10 @@ impl<O: Overseer> Interpreter<O> {
                                         v.len()
                                     ));
                                 }
-                                Ok(v.remove(index))
+                                match v.remove(index) {
+                                    (v, 0) => Ok(v),
+                                    (v, flag) => Err(Flagged(v, flag)),
+                                }
                             }
                         },
                         Some(ref data) => parent_error(format!(
@@ -1000,8 +1055,11 @@ impl<O: Overseer> Interpreter<O> {
                     Builtin::Size => Ok(literal.len() as i32),
                     Builtin::SeqAdd => Ok(0),
                     Builtin::SeqRemove => {
-                        let index = convert_signed_index(arg1.unwrap(), literal.len());
-                        Ok(literal[index])
+                        let index = convert_signed_index(arg1.unwrap().0, literal.len());
+                        match literal[index] {
+                            (v, 0) => Ok(v),
+                            (v, flag) => Err(Flagged(v, flag)),
+                        }
                     }
                 }
             }
@@ -1009,18 +1067,48 @@ impl<O: Overseer> Interpreter<O> {
     }
 
     /// Note: currently external functions assume num only arguments
-    fn call_external(&mut self, id: Token, args: Vec<Int>) -> Result<Int, InterpreterUpFlow> {
+    fn call_external(
+        &mut self,
+        id: Token,
+        args: Vec<(Int, IntFlag)>,
+    ) -> Result<Int, InterpreterUpFlow> {
         match self.overseer.call_external_function(id, args) {
-            Ok(result) => Ok(result),
+            Ok((result, 0)) => Ok(result),
+            Ok((result, flag)) => Err(Flagged(result, flag)),
             Err(desc) => parent_error(desc),
         }
     }
 
     pub fn evaluate(&mut self, ast: &Ast) -> Res<Int> {
-        match self.eval(ast, 0, StackKey::default()) {
+        match self.eval(ast, 0, StackKey::default()).ignore_flag() {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
             Err(err) => panic!(err),
+        }
+    }
+}
+
+trait IgnoreIntFlag {
+    fn ignore_flag(self) -> Self;
+
+    fn extract_flag(self) -> Result<(Int, IntFlag), InterpreterUpFlow>;
+}
+
+impl IgnoreIntFlag for Result<Int, InterpreterUpFlow> {
+    #[inline]
+    fn ignore_flag(self) -> Self {
+        match self {
+            Ok(x) | Err(InterpreterUpFlow::Flagged(x, ..)) => Ok(x),
+            err => err,
+        }
+    }
+
+    #[inline]
+    fn extract_flag(self) -> Result<(Int, IntFlag), InterpreterUpFlow> {
+        match self {
+            Ok(x) => Ok((x, 0)),
+            Err(InterpreterUpFlow::Flagged(x, flag)) => Ok((x, flag)),
+            Err(err) => Err(err),
         }
     }
 }

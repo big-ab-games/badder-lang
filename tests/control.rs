@@ -7,6 +7,8 @@ use badder_lang::controller::*;
 use badder_lang::*;
 use std::time::*;
 
+const NO_FLAG: IntFlag = 0;
+
 macro_rules! await_next_pause {
     ($controller:ident) => {{
         $controller.refresh();
@@ -159,8 +161,8 @@ fn external_functions_num_args() {
         // call 1
         if let Some(call) = con.current_external_call() {
             assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
-            assert_eq!(call.args, vec![123, 12]);
-            con.answer_external_call(Ok(135));
+            assert_eq!(call.args, vec![(123, NO_FLAG), (12, NO_FLAG)]);
+            con.answer_external_call(Ok((135, NO_FLAG)));
             break;
         }
         assert!(
@@ -175,8 +177,8 @@ fn external_functions_num_args() {
         // call 2
         if let Some(call) = con.current_external_call() {
             assert_eq!(call.id, Token::Id("external_sum(vv)".into()));
-            assert_eq!(call.args, vec![13, 135]);
-            con.answer_external_call(Ok(-123)); // can be anything, obvs
+            assert_eq!(call.args, vec![(13, NO_FLAG), (135, NO_FLAG)]);
+            con.answer_external_call(Ok((-123, NO_FLAG))); // can be anything, obvs
             break;
         }
         assert!(
