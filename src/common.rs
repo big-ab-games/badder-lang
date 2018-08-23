@@ -2,7 +2,7 @@ use std::fmt;
 
 /// `SourceRef`((`line_start`, `character_start`), (`line_end`, `character_end`))
 /// inclusive `character_start`, exclusive `character_end`
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SourceRef(pub (usize, usize), pub (usize, usize));
 
 impl SourceRef {
@@ -27,6 +27,9 @@ impl SourceRef {
         ofl >= fl && otl <= tl && ofc >= fc && otc <= tc
     }
 }
+
+
+
 
 impl fmt::Debug for SourceRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -81,3 +84,12 @@ impl PartialBadderError {
 }
 
 pub type Res<T> = Result<T, BadderError>;
+
+
+#[test]
+fn src_ordering() {
+    assert!(SourceRef((1, 2), (1, 3)) < SourceRef((2, 2), (2, 3)));
+    assert!(SourceRef((1, 2), (1, 3)) < SourceRef((1, 3), (1, 4)));
+    assert!(SourceRef((1, 2), (1, 3)) < SourceRef((1, 2), (1, 4)));
+    assert!(SourceRef((1, 2), (1, 3)) < SourceRef((1, 2), (2, 0)));
+}
