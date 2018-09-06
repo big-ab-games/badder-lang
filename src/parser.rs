@@ -1118,6 +1118,7 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
+#[allow(cyclomatic_complexity)]
 mod parser_test {
     extern crate env_logger;
 

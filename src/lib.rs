@@ -1,4 +1,4 @@
-#![allow(unknown_lints)]
+#![allow(unknown_lints, renamed_and_removed_lints)]
 #![warn(clippy)]
 
 #[macro_use]
