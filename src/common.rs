@@ -26,10 +26,12 @@ impl SourceRef {
         let SourceRef((fl, fc), (tl, tc)) = *self;
         ofl >= fl && otl <= tl && ofc >= fc && otc <= tc
     }
+
+    #[inline]
+    pub fn line_start(&self) -> usize {
+        (self.0).0
+    }
 }
-
-
-
 
 impl fmt::Debug for SourceRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
