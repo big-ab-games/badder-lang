@@ -2,4 +2,4 @@
 cargo_name="$(grep -m1 'name = ' Cargo.toml | cut -d'"' -f2)"
 RUST_BACKTRACE=0 \
  RUST_LOG=$cargo_name=debug \
- cargo +nightly watch -x "test $*"
+ cargo watch -x "test $*"
