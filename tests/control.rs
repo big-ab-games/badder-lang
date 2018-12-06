@@ -1,10 +1,6 @@
 #![allow(unknown_lints, renamed_and_removed_lints, cyclomatic_complexity)]
 
-#[macro_use]
-extern crate assert_matches;
-extern crate badder_lang;
-extern crate env_logger;
-
+use assert_matches::assert_matches;
 use badder_lang::{controller::*, *};
 use std::time::*;
 

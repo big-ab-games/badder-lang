@@ -56,7 +56,7 @@ pub enum Token {
 use crate::lexer::Token::*;
 
 impl fmt::Debug for Token {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Num(x) => write!(f, "{}", x),
             Pls => write!(f, "+"),

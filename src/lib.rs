@@ -1,31 +1,35 @@
 #![allow(unknown_lints, renamed_and_removed_lints)]
 
-#[macro_use]
-extern crate log;
-extern crate indexmap;
-extern crate rustc_hash;
-extern crate single_value_channel;
-extern crate string_cache;
-extern crate strsim;
-
 mod common;
 pub mod controller;
 mod lexer;
 mod parser;
 
-use crate::common::*;
+use crate::{
+    common::{Res, Stage},
+    lexer::Token::*,
+};
 use indexmap::IndexMap;
-use crate::lexer::Token::*;
+use log::{debug, trace, warn};
 use rustc_hash::FxHasher;
 use std::{
-    cmp::*, collections::HashSet, fmt, hash::BuildHasherDefault, i32, iter::Iterator, mem,
-    sync::Arc, usize,
+    cmp::{max, min},
+    collections::HashSet,
+    fmt,
+    hash::BuildHasherDefault,
+    i32,
+    iter::Iterator,
+    mem,
+    sync::Arc,
+    usize,
 };
 use strsim::damerau_levenshtein as str_dist;
 
-pub use crate::common::{BadderError, SourceRef};
-pub use crate::lexer::Token;
-pub use crate::parser::{Ast, Parser};
+pub use crate::{
+    common::{BadderError, SourceRef},
+    lexer::Token,
+    parser::{Ast, Parser},
+};
 
 /// Signed 32-bit integer that is the only value type.
 pub type Int = i32;
@@ -61,7 +65,7 @@ pub enum FrameData {
 }
 
 impl fmt::Debug for FrameData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Value(x, ..) => write!(f, "Value({})", x),
             Callable(..) => write!(f, "Callable"),
@@ -115,7 +119,7 @@ pub struct StackKey {
 }
 
 impl fmt::Debug for StackKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.access_from == self.access_up_to || self.access_from == self.access_up_to + 1 {
             write!(f, "all-frames")
         } else if self.access_up_to + 2 == self.access_from {
@@ -144,8 +148,7 @@ impl StackKey {
     }
 }
 
-use crate::FrameData::*;
-use crate::InterpreterUpFlow::*;
+use crate::{FrameData::*, InterpreterUpFlow::*};
 
 pub trait Overseer {
     fn oversee(
@@ -532,7 +535,10 @@ impl<O: Overseer> Interpreter<O> {
                         (arg_ids.clone(), Arc::clone(block), src)
                     }
                     _ => {
-                        return parent_error(format!("Invalid reference to non callable `{:?}`", id));
+                        return parent_error(format!(
+                            "Invalid reference to non callable `{:?}`",
+                            id
+                        ));
                     }
                 }
             };
@@ -1111,8 +1117,6 @@ impl IgnoreIntFlag for Result<Int, InterpreterUpFlow> {
 #[cfg(test)]
 #[macro_use]
 mod util {
-    extern crate env_logger;
-
     use super::*;
     use std::{
         sync::mpsc,

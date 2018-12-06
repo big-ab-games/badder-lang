@@ -34,7 +34,7 @@ impl SourceRef {
 }
 
 impl fmt::Debug for SourceRef {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let SourceRef((sl, sc), (el, ec)) = *self;
         if sl == el && sc + 1 == ec {
             write!(f, "{}:{}", sl, sc)
@@ -61,7 +61,7 @@ pub struct BadderError {
 }
 
 impl fmt::Debug for BadderError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?} {:?}: {}", self.src, self.stage, self.description)
     }
 }

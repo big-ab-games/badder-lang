@@ -1,6 +1,9 @@
 use super::Int;
-use crate::common::*;
-use crate::lexer::{Token::*, *};
+use crate::{
+    common::*,
+    lexer::{Token::*, *},
+};
+use log::trace;
 use std::{borrow::Cow, fmt, rc::Rc, sync::Arc};
 use string_cache::DefaultAtom as Atom;
 
@@ -48,7 +51,7 @@ pub enum Ast {
 
 impl fmt::Debug for Ast {
     /// Safe for large recursive structures
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Ast::Num(ref t, ..) => write!(f, "Num({:?})", t),
             Ast::BinOp(ref t, ref l, ref r, ..) => write!(f, "BinOp({:?},{:?},{:?})", t, l, r),
@@ -1117,8 +1120,6 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 #[allow(cyclomatic_complexity)]
 mod parser_test {
-    extern crate env_logger;
-
     use super::*;
 
     macro_rules! src_eq {
@@ -1398,8 +1399,6 @@ mod parser_test {
 
 #[cfg(test)]
 mod helpful_error {
-    extern crate env_logger;
-
     use super::*;
 
     #[test]
@@ -1537,8 +1536,6 @@ mod helpful_error {
 // reproductions of encountered issues/bugs
 #[cfg(test)]
 mod issues {
-    extern crate env_logger;
-
     use super::*;
 
     #[test]
