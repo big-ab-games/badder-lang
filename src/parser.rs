@@ -1,6 +1,6 @@
 use super::Int;
-use common::*;
-use lexer::{Token::*, *};
+use crate::common::*;
+use crate::lexer::{Token::*, *};
 use std::{borrow::Cow, fmt, rc::Rc, sync::Arc};
 use string_cache::DefaultAtom as Atom;
 
@@ -203,7 +203,7 @@ impl Ast {
     }
 
     pub fn src(&self) -> SourceRef {
-        use Ast::*;
+        use crate::Ast::*;
         match *self {
             Num(.., src)
             | BinOp(.., src)

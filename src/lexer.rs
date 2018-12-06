@@ -1,5 +1,5 @@
 use super::Int;
-use common::*;
+use crate::common::*;
 use std::{borrow::Cow, fmt, iter::Peekable, str::Chars};
 use string_cache::DefaultAtom as Atom;
 
@@ -53,7 +53,7 @@ pub enum Token {
     Seq,
 }
 
-use lexer::Token::*;
+use crate::lexer::Token::*;
 
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

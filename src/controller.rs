@@ -58,7 +58,7 @@ struct ControllerOverseer {
 }
 
 fn interested_in(ast: &Ast) -> bool {
-    use Ast::*;
+    use crate::Ast::*;
     match *ast {
         LinePair(..) | Line(..) | Empty(..) | Num(..) | ReferSeq(..) | ReferSeqIndex(..)
         | Refer(..) => false,

@@ -1,4 +1,4 @@
-#![allow(renamed_and_removed_lints, cyclomatic_complexity)]
+#![allow(unknown_lints, renamed_and_removed_lints, cyclomatic_complexity)]
 
 #[macro_use]
 extern crate assert_matches;

@@ -13,9 +13,9 @@ pub mod controller;
 mod lexer;
 mod parser;
 
-use common::*;
+use crate::common::*;
 use indexmap::IndexMap;
-use lexer::Token::*;
+use crate::lexer::Token::*;
 use rustc_hash::FxHasher;
 use std::{
     cmp::*, collections::HashSet, fmt, hash::BuildHasherDefault, i32, iter::Iterator, mem,
@@ -23,9 +23,9 @@ use std::{
 };
 use strsim::damerau_levenshtein as str_dist;
 
-pub use common::{BadderError, SourceRef};
-pub use lexer::Token;
-pub use parser::{Ast, Parser};
+pub use crate::common::{BadderError, SourceRef};
+pub use crate::lexer::Token;
+pub use crate::parser::{Ast, Parser};
 
 /// Signed 32-bit integer that is the only value type.
 pub type Int = i32;
@@ -144,8 +144,8 @@ impl StackKey {
     }
 }
 
-use FrameData::*;
-use InterpreterUpFlow::*;
+use crate::FrameData::*;
+use crate::InterpreterUpFlow::*;
 
 pub trait Overseer {
     fn oversee(
