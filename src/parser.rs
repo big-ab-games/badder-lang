@@ -1,11 +1,7 @@
 use super::Int;
 use common::*;
-use lexer::Token::*;
-use lexer::*;
-use std::borrow::Cow;
-use std::fmt;
-use std::rc::Rc;
-use std::sync::Arc;
+use lexer::{Token::*, *};
+use std::{borrow::Cow, fmt, rc::Rc, sync::Arc};
 use string_cache::DefaultAtom as Atom;
 
 /// Abstract syntax tree
@@ -344,7 +340,8 @@ impl<'a> Parser<'a> {
             previous_token: None,
             current_src_ref: src_ref,
             unused_lines: Vec::new(),
-        }.parse()
+        }
+        .parse()
     }
 
     fn next_token(&mut self) -> Res<&Token> {
@@ -1263,8 +1260,10 @@ mod parser_test {
                 "    a = a / 3",
                 "else",
                 "    a += 32",
-            ].join("\n"),
-        ).unwrap();
+            ]
+            .join("\n"),
+        )
+        .unwrap();
 
         let (ast, next) = expect_line_pair!(ast);
 
@@ -1345,8 +1344,10 @@ mod parser_test {
                 "fun double(x)",
                 "    return x * 2 # used return to test it, also this comment",
                 "double(2.double())",
-            ].join("\n"),
-        ).unwrap();
+            ]
+            .join("\n"),
+        )
+        .unwrap();
 
         let (ast, next) = expect_line_pair!(ast);
 
@@ -1383,8 +1384,10 @@ mod parser_test {
             &vec![
                 "fum double(x)", // `fun` misspelled -> id
                 "    return x * 2",
-            ].join("\n"),
-        ).expect_err("parse");
+            ]
+            .join("\n"),
+        )
+        .expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1407,8 +1410,10 @@ mod helpful_error {
             &vec![
                 "if 12 => 11", // `=>` misspelled
                 "    0",
-            ].join("\n"),
-        ).expect_err("parse");
+            ]
+            .join("\n"),
+        )
+        .expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1427,8 +1432,10 @@ mod helpful_error {
             &vec![
                 "if 12 =< 11", // `=>` misspelled
                 "    0",
-            ].join("\n"),
-        ).expect_err("parse");
+            ]
+            .join("\n"),
+        )
+        .expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1545,8 +1552,10 @@ mod issues {
                 "            return 234",
                 "    return 123",
                 "some_func()",
-            ].join("\n"),
-        ).expect("parse");
+            ]
+            .join("\n"),
+        )
+        .expect("parse");
     }
 
     #[test]
@@ -1558,8 +1567,10 @@ mod issues {
                 "    a1 + a2",
                 "seq list[]",
                 "list[].add(list[].size().plus(123))",
-            ].join("\n"),
-        ).expect("parse");
+            ]
+            .join("\n"),
+        )
+        .expect("parse");
     }
 
     #[test]
@@ -1601,8 +1612,10 @@ mod issues {
                 "if x is 1 or 2", // misuse of boolean operator
                 "    x += 1",
                 "x",
-            ].join("\n"),
-        ).expect_err("did not fail parse");
+            ]
+            .join("\n"),
+        )
+        .expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
 
@@ -1615,8 +1628,10 @@ mod issues {
                 "if 2 or x is 1 and 3", // misuse of boolean operator
                 "    x += 1",
                 "x",
-            ].join("\n"),
-        ).expect_err("did not fail parse");
+            ]
+            .join("\n"),
+        )
+        .expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
 

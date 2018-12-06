@@ -1,9 +1,11 @@
 use super::*;
 use single_value_channel;
-use std::sync::mpsc;
-use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
-use std::time::*;
-use std::{thread, u32, u64};
+use std::{
+    sync::mpsc::{self, RecvTimeoutError, TryRecvError},
+    thread,
+    time::*,
+    u32, u64,
+};
 
 const STACK_SIZE: usize = 8 * 1024 * 1024;
 const BADDER_STACK_LEN: usize = 200;
@@ -115,14 +117,17 @@ impl Overseer for ControllerOverseer {
                 unpaused: false,
                 time: send_time,
                 stack,
-            })).expect("send");
+            }))
+            .expect("send");
 
         let mut recv = self.from_controller.try_recv();
         while recv != Err(TryRecvError::Empty) {
             match recv {
-                Ok(Ok(i)) => if i == id {
-                    return Ok(());
-                },
+                Ok(Ok(i)) => {
+                    if i == id {
+                        return Ok(());
+                    }
+                }
                 Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
                     debug!("ControllerOverseer cancelling: {:?} {:?}", ast.src(), ast);
                     return Err(());
@@ -142,9 +147,11 @@ impl Overseer for ControllerOverseer {
             let mut elapsed = send_time.elapsed();
             while elapsed < pause_time {
                 match self.from_controller.recv_timeout(pause_time - elapsed) {
-                    Ok(Ok(i)) => if i == id {
-                        return Ok(());
-                    },
+                    Ok(Ok(i)) => {
+                        if i == id {
+                            return Ok(());
+                        }
+                    }
                     Ok(Err(_)) | Err(RecvTimeoutError::Disconnected) => {
                         debug!("ControllerOverseer cancelling: {:?} {:?}", ast.src(), ast);
                         return Err(());
@@ -454,7 +461,8 @@ impl Controller {
                 };
                 let _ =
                     final_result.send(Interpreter::new(BADDER_STACK_LEN, overseer).evaluate(&code));
-            }).unwrap();
+            })
+            .unwrap();
     }
 }
 

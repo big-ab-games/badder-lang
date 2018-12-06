@@ -1,5 +1,4 @@
 #![allow(unknown_lints, renamed_and_removed_lints)]
-#![warn(clippy)]
 
 #[macro_use]
 extern crate log;
@@ -18,14 +17,10 @@ use common::*;
 use indexmap::IndexMap;
 use lexer::Token::*;
 use rustc_hash::FxHasher;
-use std::cmp::*;
-use std::collections::HashSet;
-use std::fmt;
-use std::hash::BuildHasherDefault;
-use std::iter::Iterator;
-use std::mem;
-use std::sync::Arc;
-use std::{i32, usize};
+use std::{
+    cmp::*, collections::HashSet, fmt, hash::BuildHasherDefault, i32, iter::Iterator, mem,
+    sync::Arc, usize,
+};
 use strsim::damerau_levenshtein as str_dist;
 
 pub use common::{BadderError, SourceRef};
@@ -537,7 +532,7 @@ impl<O: Overseer> Interpreter<O> {
                         (arg_ids.clone(), Arc::clone(block), src)
                     }
                     _ => {
-                        return parent_error(format!("Invalid reference to non callable `{:?}`", id))
+                        return parent_error(format!("Invalid reference to non callable `{:?}`", id));
                     }
                 }
             };
@@ -1119,9 +1114,11 @@ mod util {
     extern crate env_logger;
 
     use super::*;
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::{Duration, Instant};
+    use std::{
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
 
     fn eval_within(code: &str, timeout: Duration) -> Res<Int> {
         let (sender, receiver) = mpsc::channel();
@@ -1143,8 +1140,11 @@ mod util {
                 _ => thread::sleep(Duration::from_millis(5)),
             }
         }
-        Err(BadderError::at(SourceRef((0, 0),(0, 0))) // TODO
-            .describe(Stage::Interpreter, format!("Program did not return within {:?}", timeout)))
+        Err(BadderError::at(SourceRef((0, 0), (0, 0))) // TODO
+            .describe(
+                Stage::Interpreter,
+                format!("Program did not return within {:?}", timeout),
+            ))
     }
 
     fn print_program_debug(code: &str) -> Res<()> {

@@ -1,9 +1,6 @@
 use super::Int;
 use common::*;
-use std::borrow::Cow;
-use std::fmt;
-use std::iter::Peekable;
-use std::str::Chars;
+use std::{borrow::Cow, fmt, iter::Peekable, str::Chars};
 use string_cache::DefaultAtom as Atom;
 
 #[derive(PartialEq, Eq, Clone, Hash)]

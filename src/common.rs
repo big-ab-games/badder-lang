@@ -87,7 +87,6 @@ impl PartialBadderError {
 
 pub type Res<T> = Result<T, BadderError>;
 
-
 #[test]
 fn src_ordering() {
     assert!(SourceRef((1, 2), (1, 3)) < SourceRef((2, 2), (2, 3)));

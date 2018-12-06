@@ -5,8 +5,7 @@ extern crate assert_matches;
 extern crate badder_lang;
 extern crate env_logger;
 
-use badder_lang::controller::*;
-use badder_lang::*;
+use badder_lang::{controller::*, *};
 use std::time::*;
 
 const NO_FLAG: IntFlag = 0;
