@@ -1118,7 +1118,7 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
-#[allow(cyclomatic_complexity)]
+#[allow(clippy::cyclomatic_complexity)]
 mod parser_test {
     use super::*;
 
@@ -1157,7 +1157,7 @@ mod parser_test {
         };
         ($ast:ident = $pat:pat,src = $src:expr) => {{
             let src_eq = src_eq!($ast, $src);
-            #[allow(match_ref_pats)]
+            #[allow(clippy::match_ref_pats)]
             let out = match $ast {
                 $pat => $ast,
                 _ => panic!("Unexpected {}", $ast.debug_string()),

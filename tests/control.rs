@@ -1,4 +1,4 @@
-#![allow(unknown_lints, renamed_and_removed_lints, cyclomatic_complexity)]
+#![allow(unknown_lints, clippy::cyclomatic_complexity)]
 
 use assert_matches::assert_matches;
 use badder_lang::{controller::*, *};

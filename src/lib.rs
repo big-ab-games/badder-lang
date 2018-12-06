@@ -1,4 +1,4 @@
-#![allow(unknown_lints, renamed_and_removed_lints)]
+#![allow(unknown_lints)]
 
 mod common;
 pub mod controller;
@@ -418,7 +418,7 @@ impl<O: Overseer> Interpreter<O> {
         Ok(0)
     }
 
-    #[allow(too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     fn eval_for_in(
         &mut self,
