@@ -409,32 +409,44 @@ impl<'a> Parser<'a> {
             self.next_token()?;
             res
         } else {
-            let expected = types
-                .iter()
-                .map(|t| match t {
-                    &Num(_) => "0-9".into(),
-                    &Eol | &Eof => t.long_debug(),
-                    token => format!("{:?}", token).into(),
-                })
-                .collect::<Vec<_>>()
-                .join(",");
-
             let help_message = self
                 .parse_fail_help()
                 .map(|msg| Cow::Owned(format!(", {}", msg)))
-                .unwrap_or_else(|| "".into());
+                .unwrap_or_else(|| {
+                    let maybe_expected = types
+                        .iter()
+                        .filter_map(|t| match t {
+                            &Num(_) => Some(Cow::Borrowed("0-9")),
+                            &Eol | &Eof => None,
+                            token => Some(format!("{:?}", token).into()),
+                        })
+                        .collect::<Vec<_>>();
+
+                    match (!maybe_expected.is_empty(), types.contains(&Eol)) {
+                        (true, true) => format!(
+                            ", something like `{}` or the end of the line was expected",
+                            maybe_expected.join(",")
+                        )
+                        .into(),
+                        (false, _) => "".into(),
+                        (true, false) => format!(
+                            ", something like `{}` was expected",
+                            maybe_expected.join(",")
+                        )
+                        .into(),
+                    }
+                });
 
             Err(BadderError::at(self.current_src_ref).describe(
                 Stage::Parser,
                 format!(
-                    "Expected `{}`{} but got {}{}",
-                    expected,
+                    "Unexpected {}{}{}",
+                    self.current_token.long_debug(),
                     self.previous_token
                         .as_ref()
-                        .map(|t| Cow::Owned(format!(" to follow `{:?}`", t)))
+                        .map(|t| Cow::Owned(format!(" after `{:?}`", t)))
                         .unwrap_or_else(|| "".into()),
-                    self.current_token.long_debug(),
-                    help_message
+                    help_message,
                 ),
             ))
         }
