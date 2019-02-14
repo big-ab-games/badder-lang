@@ -77,11 +77,7 @@ impl BadderError {
 
 impl PartialBadderError {
     pub fn describe<S: Into<String>>(self, stage: Stage, desc: S) -> BadderError {
-        BadderError {
-            stage,
-            description: desc.into(),
-            src: self.0,
-        }
+        BadderError { stage, description: desc.into(), src: self.0 }
     }
 }
 

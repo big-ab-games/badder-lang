@@ -162,10 +162,7 @@ fn external_functions_num_args() {
             con.answer_external_call(Ok((135, NO_FLAG)));
             break;
         }
-        assert!(
-            start.elapsed() < Duration::from_secs(2),
-            "Waited 2 seconds for expectation"
-        );
+        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
         con.refresh();
         assert_matches!(con.result(), None);
     }
@@ -178,10 +175,7 @@ fn external_functions_num_args() {
             con.answer_external_call(Ok((-123, NO_FLAG))); // can be anything, obvs
             break;
         }
-        assert!(
-            start.elapsed() < Duration::from_secs(2),
-            "Waited 2 seconds for expectation"
-        );
+        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
         con.refresh();
         assert_matches!(con.result(), None);
     }

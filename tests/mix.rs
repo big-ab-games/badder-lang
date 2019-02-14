@@ -1,5 +1,3 @@
-
-
 use badder_lang::*;
 
 #[test]

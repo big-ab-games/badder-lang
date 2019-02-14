@@ -85,9 +85,7 @@ impl FrameData {
             Callable(ref args, ..) => format!(
                 "{:?}({})",
                 id,
-                args.iter()
-                    .map(|a| format!("{:?}", a))
-                    .fold(String::new(), |all, n| all + &n)
+                args.iter().map(|a| format!("{:?}", a)).fold(String::new(), |all, n| all + &n)
             ),
             Sequence(..) | BuiltinCallable(..) => format!("{:?}", id),
             Ref(..) => format!("ref->{:?}", id),
@@ -125,22 +123,14 @@ impl fmt::Debug for StackKey {
         } else if self.access_up_to + 2 == self.access_from {
             write!(f, "not-frame({})", self.access_up_to + 1)
         } else {
-            write!(
-                f,
-                "not-frame({}-{})",
-                self.access_up_to + 1,
-                self.access_from - 1
-            )
+            write!(f, "not-frame({}-{})", self.access_up_to + 1, self.access_from - 1)
         }
     }
 }
 
 impl StackKey {
     fn from_fun_call(fun_declared_frame: usize, call_frame: usize) -> StackKey {
-        StackKey {
-            access_up_to: fun_declared_frame,
-            access_from: call_frame + 1,
-        }
+        StackKey { access_up_to: fun_declared_frame, access_from: call_frame + 1 }
     }
 
     fn can_access(&self, frame_index: usize) -> bool {
@@ -213,9 +203,7 @@ fn bool_to_num(b: bool) -> Int {
 }
 
 fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {
-    Err(Error(
-        BadderError::at(UNKNOWN_SRC_REF).describe(Stage::Interpreter, desc.into()),
-    ))
+    Err(Error(BadderError::at(UNKNOWN_SRC_REF).describe(Stage::Interpreter, desc.into())))
 }
 
 fn convert_signed_index(mut i: i32, length: usize) -> usize {
@@ -243,11 +231,7 @@ impl<O: Overseer> Interpreter<O> {
             init_frame.insert(ext_fun.clone(), FrameData::ExternalCallable);
         }
         FrameData::add_builtins_to(&mut init_frame);
-        Interpreter {
-            stack: vec![init_frame],
-            overseer,
-            max_stack_len,
-        }
+        Interpreter { stack: vec![init_frame], overseer, max_stack_len }
     }
 
     fn unknown_id_err(&mut self, id: &Token, stack_key: StackKey) -> String {
@@ -261,11 +245,7 @@ impl<O: Overseer> Interpreter<O> {
         if keys.is_empty() {
             format!("id `{:?}` not found in scope", id)
         } else {
-            assert!(
-                !keys.contains(id),
-                "!keys.contains(id): `{:?}` is available",
-                id
-            );
+            assert!(!keys.contains(id), "!keys.contains(id): `{:?}` is available", id);
             let mut available: Vec<_> = keys
                 .iter()
                 .map(|k| k.id_str().unwrap_or("#"))
@@ -279,10 +259,7 @@ impl<O: Overseer> Interpreter<O> {
                 available.sort_by_key(|known| str_dist(id, known));
             }
             let available = available.join(", ");
-            format!(
-                "id `{:?}` not found in scope, available: {{{}}}",
-                id, available
-            )
+            format!("id `{:?}` not found in scope, available: {{{}}}", id, available)
         }
     }
 
@@ -497,11 +474,7 @@ impl<O: Overseer> Interpreter<O> {
         macro_rules! oversee_deferred {
             ($deferred_oversee:expr) => {{
                 let (defer_ast, defer_scope, defer_key) = $deferred_oversee;
-                if self
-                    .overseer
-                    .oversee(&self.stack, defer_ast, defer_scope, defer_key)
-                    .is_err()
-                {
+                if self.overseer.oversee(&self.stack, defer_ast, defer_scope, defer_key).is_err() {
                     return Err(Error(
                         BadderError::at(defer_ast.src()).describe(Stage::Interpreter, "cancelled"),
                     ));
@@ -723,14 +696,8 @@ impl<O: Overseer> Interpreter<O> {
         let mut deferred_oversee = None;
         if let Ast::Call(..) = *ast {
             deferred_oversee = Some((ast, current_scope, stack_key))
-        } else if self
-            .overseer
-            .oversee(&self.stack, ast, current_scope, stack_key)
-            .is_err()
-        {
-            return Err(Error(
-                BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled"),
-            ));
+        } else if self.overseer.oversee(&self.stack, ast, current_scope, stack_key).is_err() {
+            return Err(Error(BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled")));
         }
 
         let result = match *ast {
@@ -792,15 +759,9 @@ impl<O: Overseer> Interpreter<O> {
             Ast::While(ref expr, ref block, ..) => {
                 self.eval_while(expr, block, current_scope, stack_key)
             }
-            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => self.eval_for_in(
-                idx_id,
-                item_id,
-                list_expr,
-                block,
-                src,
-                current_scope,
-                stack_key,
-            ),
+            Ast::ForIn(ref idx_id, ref item_id, ref list_expr, ref block, src) => {
+                self.eval_for_in(idx_id, item_id, list_expr, block, src, current_scope, stack_key)
+            }
             Ast::LoopNav(ref token, ..) => {
                 let loop_token = Id("#loop".into());
                 if highest_frame_idx!(&loop_token).is_some() {
@@ -831,13 +792,9 @@ impl<O: Overseer> Interpreter<O> {
                 self.stack[top].insert(id.clone(), Callable(args.clone(), Arc::clone(block), src));
                 Ok(0)
             }
-            Ast::Call(ref id, ref args, ..) => self.eval_fun_call(
-                id,
-                args,
-                current_scope,
-                stack_key,
-                deferred_oversee.unwrap(),
-            ),
+            Ast::Call(ref id, ref args, ..) => {
+                self.eval_fun_call(id, args, current_scope, stack_key, deferred_oversee.unwrap())
+            }
             Ast::Return(ref expr, ..) => {
                 let (v, flag) = eval!(expr; with_flag)?;
                 Err(FunReturn(v, flag))
@@ -889,15 +846,9 @@ impl<O: Overseer> Interpreter<O> {
         self.overseer.oversee_after(&self.stack, ast);
 
         match result {
-            Err(Error(BadderError {
-                stage,
-                description,
-                src,
-            })) => {
+            Err(Error(BadderError { stage, description, src })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(
-                        BadderError::at(ast.src()).describe(stage, description),
-                    ))
+                    Err(Error(BadderError::at(ast.src()).describe(stage, description)))
                 } else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
@@ -952,15 +903,9 @@ impl<O: Overseer> Interpreter<O> {
         };
 
         match result {
-            Err(Error(BadderError {
-                stage,
-                description,
-                src,
-            })) => {
+            Err(Error(BadderError { stage, description, src })) => {
                 if src == UNKNOWN_SRC_REF {
-                    Err(Error(
-                        BadderError::at(list.src()).describe(stage, description),
-                    ))
+                    Err(Error(BadderError::at(list.src()).describe(stage, description)))
                 } else {
                     Err(Error(BadderError::at(src).describe(stage, description)))
                 }
@@ -980,21 +925,14 @@ impl<O: Overseer> Interpreter<O> {
         deferred_oversee: (&Ast, usize, StackKey),
     ) -> Result<Int, InterpreterUpFlow> {
         let arg1 = if args.len() == 2 {
-            Some(
-                self.eval(&args[1], current_scope, stack_key)
-                    .extract_flag()?,
-            )
+            Some(self.eval(&args[1], current_scope, stack_key).extract_flag()?)
         } else {
             None
         };
 
         // should be enough to defer function oversee to here
         let (defer_ast, defer_scope, defer_key) = deferred_oversee;
-        if self
-            .overseer
-            .oversee(&self.stack, defer_ast, defer_scope, defer_key)
-            .is_err()
-        {
+        if self.overseer.oversee(&self.stack, defer_ast, defer_scope, defer_key).is_err() {
             return Err(Error(
                 BadderError::at(defer_ast.src()).describe(Stage::Interpreter, "cancelled"),
             ));
@@ -1145,10 +1083,7 @@ mod util {
             }
         }
         Err(BadderError::at(SourceRef((0, 0), (0, 0))) // TODO
-            .describe(
-                Stage::Interpreter,
-                format!("Program did not return within {:?}", timeout),
-            ))
+            .describe(Stage::Interpreter, format!("Program did not return within {:?}", timeout)))
     }
 
     fn print_program_debug(code: &str) -> Res<()> {

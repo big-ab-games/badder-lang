@@ -216,13 +216,7 @@ impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Lexer<'a> {
         let mut chars = code.chars().peekable();
         let first = chars.next();
-        Lexer {
-            chars,
-            current_char: first,
-            newline: true,
-            line_num: 1,
-            char_num: 1,
-        }
+        Lexer { chars, current_char: first, newline: true, line_num: 1, char_num: 1 }
     }
 
     fn next_char(&mut self) -> Option<char> {
@@ -239,10 +233,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn cursor(&self) -> SourceRef {
-        SourceRef(
-            (self.line_num, self.char_num),
-            (self.line_num, self.char_num + 1),
-        )
+        SourceRef((self.line_num, self.char_num), (self.line_num, self.char_num + 1))
     }
 
     /// Attempts to return next token without advancing, has limitations
