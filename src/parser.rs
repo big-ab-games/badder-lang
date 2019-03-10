@@ -254,6 +254,22 @@ impl Ast {
         None
     }
 
+    fn extract_fun_call(&self) -> Option<(Atom, &[Ast])> {
+        match *self {
+            Ast::Call(Id(ref id), ref args, ..) => Some((id.clone(), args)),
+            _ => None,
+        }
+    }
+
+    fn extract_fun_call_is_num(&self) -> Option<((Atom, &[Ast]), i32)> {
+        if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
+            if let (Some(fun), Some(n)) = (left.extract_fun_call(), right.extract_num()) {
+                return Some((fun, n));
+            }
+        }
+        None
+    }
+
     fn validate_bin_op(&self) -> Res<()> {
         match *self {
             Ast::BinOp(And, ref left, ref right, src)
@@ -270,14 +286,32 @@ impl Ast {
                         rhs = if rhs_numeric { "NUM" } else { "EXPR" },
                     );
 
-                    // try to help with common `x is 1 or 2` issue
+                    // try to help with common issues
                     if rhs_numeric {
                         if let (Some((id, n)), Some(rhs)) =
                             (left.extract_ref_is_num(), right.extract_num())
                         {
+                            // `foo is 1 or 2`
                             msg.push_str(&format!(
-                                "\nDid you mean `{id} is {n} {op} {id} is {rhs}`?",
+                                "\n\nDid you mean `{id} is {n} {op} {id} is {rhs}`?",
                                 id = id,
+                                n = n,
+                                op = and_or,
+                                rhs = rhs,
+                            ));
+                        } else if let (Some(((id, args), n)), Some(rhs)) =
+                            (left.extract_fun_call_is_num(), right.extract_num())
+                        {
+                            // `foo() is 1 or 2`
+                            let mut fun_var_name = &id[..id.find('(').unwrap()];
+                            if fun_var_name.starts_with("robo_") && fun_var_name != "robo_" {
+                                fun_var_name = &fun_var_name["robo_".len()..];
+                            }
+                            let fun_call = if args.is_empty() { &*id } else { "..." };
+                            msg.push_str(&format!(
+                                "\n\nTry using a variable `var {id} = {call}`\nthen `{id} is {n} {op} {id} is {rhs}`",
+                                id = fun_var_name,
+                                call = fun_call,
                                 n = n,
                                 op = and_or,
                                 rhs = rhs,
@@ -455,7 +489,7 @@ impl<'a> Parser<'a> {
 
     fn fun_call(&mut self, left: Option<Ast>, id: Token) -> Res<Ast> {
         // function call
-        let src = left.iter().next().map(|a| a.src()).unwrap_or(self.current_src_ref);
+        let src = left.iter().next().map(Ast::src).unwrap_or(self.current_src_ref);
         self.consume(OpnBrace)?;
         let mut args = left.map(|a| vec![a]).unwrap_or_else(|| vec![]);
         let mut signature = String::new();
@@ -1098,7 +1132,7 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)]
 mod parser_test {
     use super::*;
 
@@ -1450,6 +1484,51 @@ mod helpful_error {
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(err.description.contains("`is`"), "error did not suggest `is`");
+    }
+
+    #[test]
+    fn variable_is_1_or_2() {
+        let _ = env_logger::try_init();
+
+        let err = Parser::parse_str(&vec!["var scan = 1", "if scan is 1 or 2", "    0"].join("\n"))
+            .expect_err("parse");
+
+        println!("Got error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((2, 4), (2, 18)));
+        assert!(err.description.contains("`scan is 1 or scan is 2`"));
+    }
+
+    #[test]
+    fn argless_fun_call_is_1_or_2() {
+        let _ = env_logger::try_init();
+
+        let err = Parser::parse_str(
+            &vec!["fun do_scan()", "    2", "if do_scan() is 1 or 2", "    0"].join("\n"),
+        )
+        .expect_err("parse");
+
+        println!("Got error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((3, 4), (3, 23)));
+        assert!(err.description.contains("var do_scan = do_scan()"));
+        assert!(err.description.contains("do_scan is 1 or do_scan is 2"));
+    }
+
+    #[test]
+    fn arg_fun_call_is_1_or_2() {
+        let _ = env_logger::try_init();
+
+        let err = Parser::parse_str(
+            &vec!["fun do_scan(n)", "    n", "if do_scan(2) is 1 or 2", "    0"].join("\n"),
+        )
+        .expect_err("parse");
+
+        println!("Got error: {:?}", err);
+
+        assert_eq!(err.src, SourceRef((3, 4), (3, 24)));
+        assert!(err.description.contains("var do_scan = "));
+        assert!(err.description.contains("do_scan is 1 or do_scan is 2"));
     }
 }
 
