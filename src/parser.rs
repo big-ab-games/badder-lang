@@ -4,6 +4,7 @@ use crate::{
     lexer::{Token::*, *},
 };
 use log::trace;
+use rustc_hash::FxHashSet;
 use std::{borrow::Cow, fmt, rc::Rc, sync::Arc};
 use string_cache::DefaultAtom as Atom;
 
@@ -362,6 +363,23 @@ impl<'a> Parser<'a> {
             unused_lines: Vec::new(),
         }
         .parse()
+    }
+
+    /// Collects all assign ids. Fails only on lexer errors.
+    pub fn collect_assign_ids(code: &'a str) -> Res<FxHashSet<AssignId>> {
+        let mut lexer = Lexer::new(code);
+        let mut ids = FxHashSet::default();
+        let mut last_token = None;
+        loop {
+            match (last_token, lexer.next_token()?) {
+                (Some(kind), (Id(id), ..)) => {
+                    ids.insert(AssignId { kind, id });
+                }
+                (_, (Eof, ..)) => break,
+                (_, (token, ..)) => last_token = AssignIdKind::try_from(&token),
+            }
+        }
+        Ok(ids)
     }
 
     fn next_token(&mut self) -> Res<&Token> {
@@ -1131,6 +1149,28 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AssignId {
+    pub id: Atom,
+    pub kind: AssignIdKind,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AssignIdKind {
+    Var,
+    Fun,
+    Seq,
+}
+impl AssignIdKind {
+    fn try_from(token: &Token) -> Option<Self> {
+        Some(match token {
+            Token::Var => AssignIdKind::Var,
+            Token::Seq => AssignIdKind::Seq,
+            Token::Fun => AssignIdKind::Fun,
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::cognitive_complexity)]
 mod parser_test {
@@ -1369,6 +1409,37 @@ mod parser_test {
 
         assert!(err.description.contains("double"));
         assert_eq!(err.src, SourceRef((1, 5), (1, 11)));
+    }
+
+    #[test]
+    fn collect_assign_ids() {
+        #[rustfmt::skip]
+        let code = "var foo = 123\n\
+                    foo += 234\n\
+                    fun do_something()\n    \
+                        seq foos[]\n    \
+                        something()\n\
+                    if foo > 345\n    \
+                        var bar = 45\n    \
+                        do_something()\n\
+                    else\n    \
+                        var foo2\n    \
+                        if foo < 0\n        \
+                            var bar2 = 12";
+        let ids = Parser::collect_assign_ids(code).unwrap();
+        assert_eq!(
+            ids,
+            vec![
+                AssignId { kind: AssignIdKind::Var, id: Atom::from("foo") },
+                AssignId { kind: AssignIdKind::Fun, id: Atom::from("do_something") },
+                AssignId { kind: AssignIdKind::Seq, id: Atom::from("foos") },
+                AssignId { kind: AssignIdKind::Var, id: Atom::from("bar") },
+                AssignId { kind: AssignIdKind::Var, id: Atom::from("foo2") },
+                AssignId { kind: AssignIdKind::Var, id: Atom::from("bar2") },
+            ]
+            .into_iter()
+            .collect()
+        );
     }
 }
 

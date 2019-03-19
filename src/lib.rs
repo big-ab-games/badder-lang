@@ -28,7 +28,7 @@ use strsim::damerau_levenshtein as str_dist;
 pub use crate::{
     common::{BadderError, SourceRef},
     lexer::Token,
-    parser::{Ast, Parser},
+    parser::{Ast, Parser, AssignId, AssignIdKind},
 };
 
 /// Signed 32-bit integer that is the only value type.
