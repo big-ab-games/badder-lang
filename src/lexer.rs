@@ -32,7 +32,6 @@ pub enum Token {
 
     /// Keywords
     Var,
-    Def,
     If,
     Else,
     And,
@@ -82,7 +81,6 @@ impl fmt::Debug for Token {
             Else => write!(f, "else"),
             Not => write!(f, "not"),
             Is => write!(f, "is"),
-            Def => write!(f, "def"),
             And => write!(f, "and"),
             Or => write!(f, "or"),
             Loop => write!(f, "loop"),
@@ -131,7 +129,6 @@ impl Token {
             "else" => Else,
             "not" => Not,
             "is" => Is,
-            "def" => Def,
             "and" => And,
             "or" => Or,
             "loop" => Loop,
