@@ -397,6 +397,9 @@ impl<'a> Parser<'a> {
         let prev_help: Option<Cow<'static, str>> = match (&self.previous_token, &self.current_token)
         {
             (&Some(Pls), &Pls) => Some("`++` is not an operator, did you mean `+= 1`?".into()),
+            (&Some(Is), &Is) => {
+                Some("try using just `is`, without stammering.".into())
+            }
             (&Some(Is), token) if token.is_binary_op() => {
                 Some(format!("try using just `is` or `{:?}`.", token).into())
             }
