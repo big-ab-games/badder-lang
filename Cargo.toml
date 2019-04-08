@@ -9,7 +9,7 @@ indexmap = "1"
 log = "0.4"
 string_cache = "0.7"
 single_value_channel = "1"
-strsim = "0.8"
+strsim = "0.9"
 rustc-hash = "1"
 
 [dev-dependencies]
