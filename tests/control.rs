@@ -1,4 +1,4 @@
-#![allow(unknown_lints, clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)]
 
 use assert_matches::assert_matches;
 use badder_lang::{controller::*, *};

@@ -1,5 +1,3 @@
-#![allow(unknown_lints)]
-
 mod common;
 pub mod controller;
 mod lexer;
