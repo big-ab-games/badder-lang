@@ -26,7 +26,7 @@ use strsim::damerau_levenshtein as str_dist;
 pub use crate::{
     common::{BadderError, SourceRef},
     lexer::Token,
-    parser::{Ast, Parser, AssignId, AssignIdKind},
+    parser::{AssignId, AssignIdKind, Ast, Parser},
 };
 
 /// Signed 32-bit integer that is the only value type.
@@ -486,7 +486,13 @@ impl<O: Overseer> Interpreter<O> {
                 builtin_callable = Some(builtin);
             }
             if let Some(builtin) = builtin_callable {
-                return self.call_builtin(builtin, args, current_scope, stack_key, deferred_oversee);
+                return self.call_builtin(
+                    builtin,
+                    args,
+                    current_scope,
+                    stack_key,
+                    deferred_oversee,
+                );
             }
 
             if self.stack[idx][id] == ExternalCallable {
@@ -695,7 +701,9 @@ impl<O: Overseer> Interpreter<O> {
         if let Ast::Call(..) = *ast {
             deferred_oversee = Some((ast, current_scope, stack_key))
         } else if self.overseer.oversee(&self.stack, ast, current_scope, stack_key).is_err() {
-            return Err(Error(BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled")));
+            return Err(Error(
+                BadderError::at(ast.src()).describe(Stage::Interpreter, "cancelled"),
+            ));
         }
 
         let result = match *ast {
@@ -1080,8 +1088,13 @@ mod util {
                 _ => thread::sleep(Duration::from_millis(5)),
             }
         }
-        Err(BadderError::at(SourceRef((0, 0), (0, 0))) // TODO
-            .describe(Stage::Interpreter, format!("Program did not return within {:?}", timeout)))
+        Err(
+            BadderError::at(SourceRef((0, 0), (0, 0))) // TODO
+                .describe(
+                    Stage::Interpreter,
+                    format!("Program did not return within {:?}", timeout),
+                ),
+        )
     }
 
     fn print_program_debug(code: &str) -> Res<()> {
