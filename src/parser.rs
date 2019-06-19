@@ -443,10 +443,12 @@ impl<'a> Parser<'a> {
         debug_assert!(self.unused_lines.is_empty());
 
         if types.iter().any(|t| t.matches(&self.current_token)) {
+            // eprintln!("{:?}: {:?}", self.current_token, backtrace::Backtrace::new());
             let res = Ok(self.current_token.clone());
             self.next_token()?;
             res
         } else {
+            // eprintln!("Err {:?}: {:?}", self.current_token, backtrace::Backtrace::new());
             let help_message = self
                 .parse_fail_help()
                 .map(|msg| Cow::Owned(format!(", {}", msg)))
@@ -510,28 +512,20 @@ impl<'a> Parser<'a> {
 
     fn fun_call(&mut self, left: Option<Ast>, id: Token) -> Res<Ast> {
         // function call
-        let src = left.iter().next().map(Ast::src).unwrap_or(self.current_src_ref);
+        let src = left.as_ref().map(Ast::src).unwrap_or(self.current_src_ref);
         self.consume(OpnBrace)?;
-        let mut args = left.map(|a| vec![a]).unwrap_or_else(|| vec![]);
+        let mut args: Vec<_> = left.into_iter().collect();
         let mut signature = String::new();
         match id {
             Id(name) => signature = signature + &name + "(",
             _ => panic!("fun_call passed in non-Id id"),
         }
         while self.current_token != ClsBrace {
-            match self.listref()? {
+            match self.listref_no_edge_cases()? {
                 Ok(Some(list)) => args.push(list),
                 Ok(None) => args.push(self.expr()?),
-                Err(ListParseEdgeCase::DotCall(list)) => {
-                    self.consume(Dot)?;
-                    let fun_id = self.consume(Id("identifier".into()))?;
-                    let mut call = self.fun_call(Some(list), fun_id)?;
-                    // handle further chained dot calls
-                    while self.consume_maybe(Dot)?.is_some() {
-                        let fun_id = self.consume(Id("identifier".into()))?;
-                        call = self.fun_call(Some(call), fun_id)?;
-                    }
-                    args.push(call);
+                Err(ListParseEdgeCase::DotCall(..)) => {
+                    panic!("Internal error: Unexpected DotCall edge case");
                 }
             }
 
@@ -845,7 +839,7 @@ impl<'a> Parser<'a> {
     }
 
     /// return optional list match
-    fn listref(&mut self) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
+    fn _listref(&mut self, edge_cases: bool) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
         if self.consume_maybe(OpnBrace)?.is_some() {
             let list = self.list()?;
             self.consume(ClsBrace)?;
@@ -853,7 +847,7 @@ impl<'a> Parser<'a> {
         }
         let src = self.current_src_ref;
         if let Id(..) = self.current_token {
-            if self.lexer.peek()? == Square {
+            if self.lexer.peek()? == Square && (edge_cases || self.lexer.peekn(2)? != Dot) {
                 let id = self.consume(Id("identifier".into()))?;
                 self.consume(Square)?;
                 let refer =
@@ -866,6 +860,16 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(Ok(None))
+    }
+
+    #[inline]
+    fn listref(&mut self) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
+        self._listref(true)
+    }
+
+    #[inline]
+    fn listref_no_edge_cases(&mut self) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
+        self._listref(false)
     }
 
     fn list(&mut self) -> Res<Ast> {
@@ -1701,5 +1705,18 @@ mod issues {
 
         assert_eq!(err.src, SourceRef((2, 9), (2, 21)));
         assert!(err.description.contains("and"));
+    }
+
+    #[test]
+    fn size_minus_1() {
+        let _ = env_logger::try_init();
+        Parser::parse_str(
+            &vec![
+                "seq path[] = 1, 2, 3",
+                "path[].remove(path[].size() - 1)", // misuse of boolean operator
+            ]
+            .join("\n"),
+        )
+        .expect("did not parse");
     }
 }

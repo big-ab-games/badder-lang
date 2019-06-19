@@ -233,6 +233,23 @@ impl<'a> Lexer<'a> {
         SourceRef((self.line_num, self.char_num), (self.line_num, self.char_num + 1))
     }
 
+    /// Peeks any distance of tokens forward
+    pub fn peekn(&mut self, n: usize) -> Res<Token> {
+        match n {
+            0 | 1 => self.peek(),
+            _ => {
+                let mut clone = self.clone();
+                let mut iters = 0;
+                let mut next = Ok(Eof);
+                while iters < n {
+                    next = clone.next_token().map(|(t, ..)| t);
+                    iters += 1;
+                }
+                next
+            }
+        }
+    }
+
     /// Attempts to return next token without advancing, has limitations
     /// Nums & Ids with only contain their first character
     /// Idents are assumed if the current character is a space on a new line
