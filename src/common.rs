@@ -70,14 +70,21 @@ impl fmt::Debug for BadderError {
 pub struct PartialBadderError(SourceRef);
 
 impl BadderError {
+    #[inline]
     pub fn at(src_ref: SourceRef) -> PartialBadderError {
         PartialBadderError(src_ref)
     }
 }
 
 impl PartialBadderError {
-    pub fn describe<S: Into<String>>(self, stage: Stage, desc: S) -> BadderError {
+    #[inline]
+    pub(crate) fn describe<S: Into<String>>(self, stage: Stage, desc: S) -> BadderError {
         BadderError { stage, description: desc.into(), src: self.0 }
+    }
+
+    // external use
+    pub fn description<S: Into<String>>(self, desc: S) -> BadderError {
+        self.describe(Stage::Interpreter, desc)
     }
 }
 
