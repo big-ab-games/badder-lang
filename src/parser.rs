@@ -1,3 +1,4 @@
+use std::ops::{Range, RangeFrom};
 use super::Int;
 use crate::{
     common::*,
@@ -334,6 +335,58 @@ fn id_to_seq_id(id: &Token) -> Token {
     match *id {
         Id(ref id) => Id((id.to_string() + "[]").into()),
         _ => panic!("id_to_seq_id() called on non-Id token"),
+    }
+}
+
+/// A token that's allowed that wouldn't normaly be
+#[derive(Debug, Clone)]
+struct TokenGuest {
+    token: Token,
+    scope: Range<usize>,
+}
+
+impl From<(Token, Range<usize>)> for TokenGuest {
+    #[inline]
+    fn from((token, scope): (Token, Range<usize>)) -> Self {
+        Self {
+            token,
+            scope,
+        }
+    }
+}
+impl From<(Token, usize)> for TokenGuest {
+    #[inline]
+    #[allow(clippy::range_plus_one)]
+    fn from((token, scope): (Token, usize)) -> Self {
+        Self {
+            token,
+            scope: scope..scope + 1,
+        }
+    }
+}
+impl From<(Token, RangeFrom<usize>)> for TokenGuest {
+    #[inline]
+    fn from((token, RangeFrom { start }): (Token, RangeFrom<usize>)) -> Self {
+        Self {
+            token,
+            scope: start..usize::max_value(),
+        }
+    }
+}
+
+trait AllowTokenScope {
+    fn allow(&self, token: &Token, scope: usize) -> bool;
+}
+
+impl AllowTokenScope for TokenGuest {
+    fn allow(&self, token: &Token, scope: usize) -> bool {
+        self.scope.contains(&scope) && &self.token == token
+    }
+}
+impl<T> AllowTokenScope for T where T: std::ops::Deref<Target = [TokenGuest]> {
+    #[inline]
+    fn allow(&self, token: &Token, scope: usize) -> bool {
+        self.deref().iter().any(|ta| ta.allow(token, scope))
     }
 }
 
@@ -689,7 +742,7 @@ impl<'a> Parser<'a> {
 
     // If expr
     //     line+
-    fn line_if_else(&mut self, scope: usize, mut allow: Rc<Vec<Token>>) -> Res<Ast> {
+    fn line_if_else(&mut self, scope: usize, mut guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
         let src = self.current_src_ref;
         let (expr, is_else) = {
             if self.consume_maybe(If)?.is_some() {
@@ -706,10 +759,10 @@ impl<'a> Parser<'a> {
             }
         };
         self.consume(Eol)?;
-        if !allow.contains(&Else) {
-            let mut new_allow: Vec<Token> = allow.as_ref().clone();
-            new_allow.push(Else);
-            allow = new_allow.into();
+        if !guests.allow(&Else, scope) {
+            let mut new_guests: Vec<TokenGuest> = guests.as_ref().clone();
+            new_guests.push((Else, scope).into());
+            guests = new_guests.into();
         }
         let block = self.lines_while_allowing(
             scope + 1,
@@ -717,7 +770,7 @@ impl<'a> Parser<'a> {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
             },
-            &allow,
+            &guests,
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line())
@@ -736,7 +789,7 @@ impl<'a> Parser<'a> {
 
     // loop
     //     line+
-    fn line_loop(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {
+    fn line_loop(&mut self, scope: usize, guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
         let src = self.current_src_ref;
         let (while_expr, for_stuff) = {
             if self.consume_maybe(While)?.is_some() {
@@ -758,11 +811,11 @@ impl<'a> Parser<'a> {
         };
         self.consume(Eol)?;
         let loop_allow = {
-            if allow.contains(&Break) && allow.contains(&Continue) {
-                allow
+            if guests.allow(&Break, scope) && guests.allow(&Continue, scope) {
+                guests
             } else {
-                let mut extended = vec![Break, Continue];
-                extended.extend_from_slice(allow.as_slice());
+                let mut extended = vec![(Break, scope + 1..).into(), (Continue, scope + 1..).into()];
+                extended.extend_from_slice(guests.as_slice());
                 extended.into()
             }
         };
@@ -825,7 +878,7 @@ impl<'a> Parser<'a> {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
             },
-            &Rc::new(vec![Return]),
+            &Rc::new(vec![(Return, scope + 1..).into()]),
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line()).describe(
@@ -907,10 +960,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn line_expr(&mut self, scope: usize, allow: Rc<Vec<Token>>) -> Res<Ast> {
+    fn line_expr(&mut self, scope: usize, guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
         let src = self.current_src_ref;
 
-        if allow.contains(&self.current_token) {
+        if guests.allow(&self.current_token, scope) {
             if let Some(token) = self.consume_any_maybe(&[Break, Continue])? {
                 return Ok(Ast::LoopNav(token, src));
             }
@@ -988,13 +1041,13 @@ impl<'a> Parser<'a> {
         }
         // If expr
         //     line+
-        if self.current_token == If || allow.contains(&Else) && self.current_token == Else {
-            return self.line_if_else(scope, allow);
+        if self.current_token == If || guests.allow(&Else, scope) && self.current_token == Else {
+            return self.line_if_else(scope, guests);
         }
         // loop
         //     line+
         if [While, Loop, For].contains(&self.current_token) {
-            return self.line_loop(scope, allow);
+            return self.line_loop(scope, guests);
         }
         // fun id()
         //     line+
@@ -1016,7 +1069,7 @@ impl<'a> Parser<'a> {
         Ok(Ast::Empty(src))
     }
 
-    fn indented_line(&mut self, allow: Rc<Vec<Token>>) -> Res<Ast> {
+    fn indented_line(&mut self, allow: Rc<Vec<TokenGuest>>) -> Res<Ast> {
         if let Some(line) = self.unused_lines.pop() {
             return Ok(line);
         }
@@ -1104,7 +1157,7 @@ impl<'a> Parser<'a> {
         &mut self,
         first_line_scope: usize,
         predicate: F,
-        allow: &Rc<Vec<Token>>,
+        allow: &Rc<Vec<TokenGuest>>,
     ) -> Res<Option<Ast>>
     where
         F: Fn(&Ast) -> bool,
@@ -1153,6 +1206,7 @@ impl<'a> Parser<'a> {
         Ok(lines.unwrap_or_else(|| Ast::Empty(self.current_src_ref)))
     }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssignId {
@@ -1612,6 +1666,23 @@ mod helpful_error {
 #[cfg(test)]
 mod issues {
     use super::*;
+
+    #[test]
+    fn else_after_var() {
+        let _ = env_logger::try_init();
+        dbg!(Parser::parse_str(
+            &vec![
+                "if 1",
+                "    if 1",
+                "        0",
+                "    var foo = 123",
+                "    else",
+                "        fail()",
+            ]
+            .join("\n"),
+        ))
+        .expect_err("did not fail parse");
+    }
 
     #[test]
     fn return_in_function_body_with_loops() {
