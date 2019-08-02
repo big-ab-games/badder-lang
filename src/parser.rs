@@ -1670,7 +1670,7 @@ mod issues {
     #[test]
     fn else_after_var() {
         let _ = env_logger::try_init();
-        dbg!(Parser::parse_str(
+        Parser::parse_str(
             &vec![
                 "if 1",
                 "    if 1",
@@ -1680,7 +1680,7 @@ mod issues {
                 "        fail()",
             ]
             .join("\n"),
-        ))
+        )
         .expect_err("did not fail parse");
     }
 
