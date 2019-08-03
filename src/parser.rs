@@ -1,4 +1,3 @@
-use std::ops::{Range, RangeFrom};
 use super::Int;
 use crate::{
     common::*,
@@ -6,7 +5,13 @@ use crate::{
 };
 use log::trace;
 use rustc_hash::FxHashSet;
-use std::{borrow::Cow, fmt, rc::Rc, sync::Arc};
+use std::{
+    borrow::Cow,
+    fmt,
+    ops::{Range, RangeFrom},
+    rc::Rc,
+    sync::Arc,
+};
 use string_cache::DefaultAtom as Atom;
 
 /// Abstract syntax tree
@@ -187,11 +192,7 @@ impl Ast {
     }
 
     fn line_scope(&self) -> Option<usize> {
-        if let Ast::Line(scope, ..) = *self {
-            Some(scope)
-        } else {
-            None
-        }
+        if let Ast::Line(scope, ..) = *self { Some(scope) } else { None }
     }
 
     pub fn src(&self) -> SourceRef {
@@ -348,29 +349,20 @@ struct TokenGuest {
 impl From<(Token, Range<usize>)> for TokenGuest {
     #[inline]
     fn from((token, scope): (Token, Range<usize>)) -> Self {
-        Self {
-            token,
-            scope,
-        }
+        Self { token, scope }
     }
 }
 impl From<(Token, usize)> for TokenGuest {
     #[inline]
     #[allow(clippy::range_plus_one)]
     fn from((token, scope): (Token, usize)) -> Self {
-        Self {
-            token,
-            scope: scope..scope + 1,
-        }
+        Self { token, scope: scope..scope + 1 }
     }
 }
 impl From<(Token, RangeFrom<usize>)> for TokenGuest {
     #[inline]
     fn from((token, RangeFrom { start }): (Token, RangeFrom<usize>)) -> Self {
-        Self {
-            token,
-            scope: start..usize::max_value(),
-        }
+        Self { token, scope: start..usize::max_value() }
     }
 }
 
@@ -383,7 +375,10 @@ impl AllowTokenScope for TokenGuest {
         self.scope.contains(&scope) && &self.token == token
     }
 }
-impl<T> AllowTokenScope for T where T: std::ops::Deref<Target = [TokenGuest]> {
+impl<T> AllowTokenScope for T
+where
+    T: std::ops::Deref<Target = [TokenGuest]>,
+{
     #[inline]
     fn allow(&self, token: &Token, scope: usize) -> bool {
         self.deref().iter().any(|ta| ta.allow(token, scope))
@@ -814,7 +809,8 @@ impl<'a> Parser<'a> {
             if guests.allow(&Break, scope) && guests.allow(&Continue, scope) {
                 guests
             } else {
-                let mut extended = vec![(Break, scope + 1..).into(), (Continue, scope + 1..).into()];
+                let mut extended =
+                    vec![(Break, scope + 1..).into(), (Continue, scope + 1..).into()];
                 extended.extend_from_slice(guests.as_slice());
                 extended.into()
             }
@@ -1206,7 +1202,6 @@ impl<'a> Parser<'a> {
         Ok(lines.unwrap_or_else(|| Ast::Empty(self.current_src_ref)))
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssignId {

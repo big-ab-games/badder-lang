@@ -193,11 +193,7 @@ pub struct Interpreter<O: Overseer> {
 
 #[inline]
 fn bool_to_num(b: bool) -> Int {
-    if b {
-        1
-    } else {
-        0
-    }
+    if b { 1 } else { 0 }
 }
 
 fn parent_error<T, S: Into<String>>(desc: S) -> Result<T, InterpreterUpFlow> {

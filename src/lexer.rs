@@ -174,11 +174,7 @@ impl Token {
     }
 
     pub fn id_str(&self) -> Option<&str> {
-        if let Token::Id(ref inner) = *self {
-            Some(inner)
-        } else {
-            None
-        }
+        if let Token::Id(ref inner) = *self { Some(inner) } else { None }
     }
 
     pub fn is_binary_op(&self) -> bool {

@@ -280,11 +280,7 @@ impl Controller {
     /// Returns current execution phase, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn current_phase(&self) -> Option<Phase> {
-        if self.cancelled {
-            None
-        } else {
-            self.current_phase.clone()
-        }
+        if self.cancelled { None } else { self.current_phase.clone() }
     }
 
     pub fn run_stats(&self) -> &RunStats {
@@ -372,11 +368,7 @@ impl Controller {
     }
 
     fn current_call_info(&self) -> Vec<SourceRef> {
-        if self.cancelled {
-            vec![]
-        } else {
-            self.fun_call_history.iter().rev().cloned().collect()
-        }
+        if self.cancelled { vec![] } else { self.fun_call_history.iter().rev().cloned().collect() }
     }
 
     /// Adds an external function signature
@@ -391,11 +383,7 @@ impl Controller {
     }
 
     pub fn current_external_call(&self) -> Option<ExternalCall> {
-        if self.cancelled {
-            None
-        } else {
-            self.current_external_call.clone()
-        }
+        if self.cancelled { None } else { self.current_external_call.clone() }
     }
 
     pub fn answer_external_call(&mut self, result: Result<(Int, IntFlag), String>) {
