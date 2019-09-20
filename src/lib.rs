@@ -385,7 +385,7 @@ impl<O: Overseer> Interpreter<O> {
                 break;
             }
         }
-        self.stack[current_scope].remove(&loop_token);
+        self.stack[current_scope].swap_remove(&loop_token);
         Ok(0)
     }
 
@@ -432,7 +432,7 @@ impl<O: Overseer> Interpreter<O> {
             index += 1;
             list = eval_seq!(list_expr)?;
         }
-        self.stack[current_scope].remove(&loop_token);
+        self.stack[current_scope].swap_remove(&loop_token);
         Ok(0)
     }
 
@@ -550,7 +550,7 @@ impl<O: Overseer> Interpreter<O> {
 
             // clean stack
             self.stack.pop();
-            return out;
+            out
         } else {
             parent_error(self.unknown_id_err(id, stack_key))
         }
