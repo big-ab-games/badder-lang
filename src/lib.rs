@@ -1214,6 +1214,31 @@ mod issues {
             "    y = 5";
             "x + y" => 8);
     }
+
+    #[test]
+    fn braces_usage_in_fn_args() {
+        assert_program!(
+            "fun foo(n)";
+            "    n";
+            "foo((3 + 5) / 2)" => 4);
+    }
+    
+    #[test]
+    fn braces_usage_in_fn_args_2() {
+        assert_program!(
+            "fun foo(a, b)";
+            "    a + b";
+            "seq bar[] = 1, 2, 3";
+            "foo((3 + 5) / 2, 1 + (bar[1] * 4) + 1)" => 14);
+    }
+
+    #[test]
+    fn braces_usage_in_fn_args_dotcall() {
+        assert_program!(
+            "fun foo(n)";
+            "    n";
+            "((3 + 5) / 2).foo()" => 4);
+    }
 }
 
 #[cfg(test)]

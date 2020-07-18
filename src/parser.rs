@@ -385,7 +385,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current_token: Token,
@@ -797,7 +797,7 @@ impl<'a> Parser<'a> {
                 };
 
                 self.consume(In)?;
-                let list = self.list()?;
+                let (list, _) = self.list()?;
                 (Ast::Empty(src.up_to_end_of(self.current_src_ref)), Some((idx_id, item_id, list)))
             } else {
                 self.consume(Loop)?;
@@ -887,8 +887,17 @@ impl<'a> Parser<'a> {
 
     /// return optional list match
     fn _listref(&mut self, edge_cases: bool) -> Res<Result<Option<Ast>, ListParseEdgeCase>> {
+        let snapshot = if edge_cases { None } else { Some(self.clone()) };
+
         if self.consume_maybe(OpnBrace)?.is_some() {
-            let list = self.list()?;
+            let (list, has_commas) = self.list()?;
+            if let Some(snapshot) = snapshot {
+                // !edge_cases + no commas means this probably isn't a list, undo!
+                if !has_commas {
+                    *self = snapshot;
+                    return Ok(Ok(None));
+                }
+            }
             self.consume(ClsBrace)?;
             return Ok(Ok(Some(list)));
         }
@@ -919,10 +928,11 @@ impl<'a> Parser<'a> {
         self._listref(false)
     }
 
-    fn list(&mut self) -> Res<Ast> {
+    /// Returns (ast, literal-has-commas)
+    fn list(&mut self) -> Res<(Ast, bool)> {
         let src = self.current_src_ref;
         match self.listref()? {
-            Ok(Some(list)) => return Ok(list),
+            Ok(Some(list)) => return Ok((list, true)),
             Err(ListParseEdgeCase::DotCall(..)) => {
                 // functions cannot (yet) return seqs so this can't work
                 return Err(BadderError::at(self.current_src_ref).describe(
@@ -939,7 +949,8 @@ impl<'a> Parser<'a> {
         while self.consume_maybe(Comma)?.is_some() {
             exprs.push(self.expr()?);
         }
-        Ok(Ast::Seq(exprs, src.up_to(self.current_src_ref)))
+        let has_commas = exprs.len() > 1;
+        Ok((Ast::Seq(exprs, src.up_to(self.current_src_ref)), has_commas))
     }
 
     // seq id[] = expr,expr,
@@ -949,7 +960,7 @@ impl<'a> Parser<'a> {
         let seq_id = id_to_seq_id(&self.consume(Id("identifier".into()))?);
         self.consume(Square)?;
         Ok(if self.consume_maybe(Ass)?.is_some() {
-            Ast::AssignSeq(seq_id, self.list()?.into(), src.up_to(self.current_src_ref))
+            Ast::AssignSeq(seq_id, self.list()?.0.into(), src.up_to(self.current_src_ref))
         } else {
             let src = src.up_to(self.current_src_ref);
             Ast::AssignSeq(seq_id, Ast::Seq(vec![], src).into(), src)

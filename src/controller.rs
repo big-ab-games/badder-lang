@@ -1,5 +1,4 @@
 use super::*;
-use single_value_channel;
 use std::{
     sync::mpsc::{self, RecvTimeoutError, TryRecvError},
     thread,
