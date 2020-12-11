@@ -15,4 +15,3 @@ rustc-hash = "1"
 
 [dev-dependencies]
 env_logger = "0.8"
-assert_matches = "1"

@@ -1,6 +1,5 @@
 #![allow(clippy::cognitive_complexity)]
 
-use assert_matches::assert_matches;
 use badder_lang::{controller::*, *};
 use std::time::*;
 
@@ -129,7 +128,7 @@ fn phase_stack() {
     while con.result().is_none() && before_result.elapsed() < Duration::from_secs(2) {
         con.refresh();
     }
-    assert_matches!(con.result(), Some(&Ok(31)));
+    assert!(matches!(con.result(), Some(&Ok(31))));
 }
 
 const EXTERNAL_FUN_SRC: &str = "\
@@ -162,9 +161,12 @@ fn external_functions_num_args() {
             con.answer_external_call(Ok((135, NO_FLAG)));
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Waited 2 seconds for expectation"
+        );
         con.refresh();
-        assert_matches!(con.result(), None);
+        assert!(matches!(con.result(), None));
     }
 
     loop {
@@ -175,15 +177,18 @@ fn external_functions_num_args() {
             con.answer_external_call(Ok((-123, NO_FLAG))); // can be anything, obvs
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(2), "Waited 2 seconds for expectation");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "Waited 2 seconds for expectation"
+        );
         con.refresh();
-        assert_matches!(con.result(), None);
+        assert!(matches!(con.result(), None));
     }
 
     while con.result().is_none() && start.elapsed() < Duration::from_secs(2) {
         con.refresh();
     }
-    assert_matches!(con.result(), Some(&Ok(-123)));
+    assert!(matches!(con.result(), Some(&Ok(-123))));
 }
 
 const CALLED_FROM_SRC: &str = "\
