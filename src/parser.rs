@@ -769,7 +769,7 @@ impl<'a> Parser<'a> {
 
     // If expr
     //     line+
-    fn line_if_else(&mut self, scope: usize, mut guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
+    fn line_if_else(&mut self, scope: usize, mut guests: Rc<[TokenGuest]>) -> Res<Ast> {
         let src = self.current_src_ref;
         let (expr, is_else) = {
             if self.consume_maybe(If)?.is_some() {
@@ -787,7 +787,7 @@ impl<'a> Parser<'a> {
         };
         self.consume(Eol)?;
         if !guests.allow(&Else, scope) {
-            let mut new_guests: Vec<TokenGuest> = guests.as_ref().clone();
+            let mut new_guests = guests.to_vec();
             new_guests.push((Else, scope).into());
             guests = new_guests.into();
         }
@@ -818,7 +818,7 @@ impl<'a> Parser<'a> {
 
     // loop
     //     line+
-    fn line_loop(&mut self, scope: usize, guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
+    fn line_loop(&mut self, scope: usize, guests: Rc<[TokenGuest]>) -> Res<Ast> {
         let src = self.current_src_ref;
         let (while_expr, for_stuff) = {
             if self.consume_maybe(While)?.is_some() {
@@ -848,7 +848,7 @@ impl<'a> Parser<'a> {
             } else {
                 let mut extended =
                     vec![(Break, scope + 1..).into(), (Continue, scope + 1..).into()];
-                extended.extend_from_slice(guests.as_slice());
+                extended.extend_from_slice(&*guests);
                 extended.into()
             }
         };
@@ -911,7 +911,7 @@ impl<'a> Parser<'a> {
                 Ast::Line(line_scope, ..) => line_scope > scope,
                 _ => false,
             },
-            &Rc::new(vec![(Return, scope + 1..).into()]),
+            &vec![(Return, scope + 1..).into()].into(),
         )?;
         if block.is_none() {
             return Err(BadderError::at(src.up_to_next_line()).describe(
@@ -1013,7 +1013,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn line_expr(&mut self, scope: usize, guests: Rc<Vec<TokenGuest>>) -> Res<Ast> {
+    fn line_expr(&mut self, scope: usize, guests: Rc<[TokenGuest]>) -> Res<Ast> {
         let src = self.current_src_ref;
 
         if guests.allow(&self.current_token, scope) {
@@ -1122,7 +1122,7 @@ impl<'a> Parser<'a> {
         Ok(Ast::Empty(src))
     }
 
-    fn indented_line(&mut self, allow: Rc<Vec<TokenGuest>>) -> Res<Ast> {
+    fn indented_line(&mut self, allow: Rc<[TokenGuest]>) -> Res<Ast> {
         if let Some(line) = self.unused_lines.pop() {
             return Ok(line);
         }
@@ -1210,7 +1210,7 @@ impl<'a> Parser<'a> {
         &mut self,
         first_line_scope: usize,
         predicate: F,
-        allow: &Rc<Vec<TokenGuest>>,
+        allow: &Rc<[TokenGuest]>,
     ) -> Res<Option<Ast>>
     where
         F: Fn(&Ast) -> bool,
@@ -1251,12 +1251,12 @@ impl<'a> Parser<'a> {
     where
         F: Fn(&Ast) -> bool,
     {
-        self.lines_while_allowing(0, predicate, &Rc::new(vec![]))
+        self.lines_while_allowing(0, predicate, &vec![].into())
     }
 
     pub fn parse(&mut self) -> Res<Ast> {
         let lines = self.lines_while(|_| true)?;
-        Ok(lines.unwrap_or_else(|| Ast::Empty(self.current_src_ref)))
+        Ok(lines.unwrap_or(Ast::Empty(self.current_src_ref)))
     }
 }
 

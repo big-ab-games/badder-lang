@@ -145,10 +145,7 @@ impl Token {
     }
 
     fn is_valid_for_op_ass(&self) -> bool {
-        match *self {
-            Pls | Sub | Mul | Div => true,
-            _ => false,
-        }
+        matches!(*self, Pls | Sub | Mul | Div)
     }
 
     pub fn matches(&self, token: &Token) -> bool {
@@ -182,11 +179,8 @@ impl Token {
     }
 
     pub fn is_binary_op(&self) -> bool {
-        match *self {
-            Pls | Sub | Mul | Div | Ass | Gt | GtEq | Lt | LtEq | Mod | OpAss(_) | Is | And
-            | Or | In | Dot => true,
-            _ => false,
-        }
+        matches!(*self, Pls | Sub | Mul | Div | Ass | Gt | GtEq | Lt | LtEq | Mod | OpAss(_)
+            | Is | And | Or | In | Dot)
     }
 }
 

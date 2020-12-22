@@ -18,7 +18,7 @@ pub struct Phase {
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
     unpaused: bool,
-    pub stack: Arc<Vec<FxIndexMap<Token, FrameData>>>,
+    pub stack: Arc<[FxIndexMap<Token, FrameData>]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,24 +53,29 @@ struct ControllerOverseer {
     external_function_ids: Vec<Token>,
     external_function_call: mpsc::Sender<ExternalCall>,
     external_function_answer: mpsc::Receiver<Result<(Int, IntFlag), String>>,
-    last_stack_copy: Option<Arc<Vec<FxIndexMap<Token, FrameData>>>>,
+    last_stack_copy: Option<Arc<[FxIndexMap<Token, FrameData>]>>,
 }
 
 fn interested_in(ast: &Ast) -> bool {
     use crate::Ast::*;
-    match *ast {
-        LinePair(..) | Line(..) | Empty(..) | Num(..) | ReferSeq(..) | ReferSeqIndex(..)
-        | Refer(..) => false,
-        _ => true,
-    }
+    !matches!(
+        *ast,
+        LinePair(..)
+            | Line(..)
+            | Empty(..)
+            | Num(..)
+            | ReferSeq(..)
+            | ReferSeqIndex(..)
+            | Refer(..)
+    )
 }
 
 impl ControllerOverseer {
     fn replace_last_stack(
         &mut self,
         stack: &[FxIndexMap<Token, FrameData>],
-    ) -> Arc<Vec<FxIndexMap<Token, FrameData>>> {
-        let last: Arc<Vec<_>> = Arc::new(stack.into());
+    ) -> Arc<[FxIndexMap<Token, FrameData>]> {
+        let last: Arc<[_]> = stack.into();
         self.last_stack_copy = Some(Arc::clone(&last));
         last
     }
@@ -95,7 +100,7 @@ impl Overseer for ControllerOverseer {
         let stack = {
             // kerfuffle to avoid cloning the stack when it hasn't changed
             if let Some(last) = self.last_stack_copy.take() {
-                if last.as_slice() == stack {
+                if &*last == stack {
                     self.last_stack_copy = Some(Arc::clone(&last));
                     last
                 } else {
