@@ -5,6 +5,7 @@ use crate::{
 };
 use log::trace;
 use rustc_hash::FxHashSet;
+use smol_str::SmolStr;
 use std::{
     borrow::Cow,
     fmt,
@@ -12,7 +13,8 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use string_cache::DefaultAtom as Atom;
+
+const ID_TOKEN: Token = Id(SmolStr::new_inline("identifier"));
 
 /// Abstract syntax tree
 #[derive(PartialEq, Clone, Hash)]
@@ -262,14 +264,14 @@ impl Ast {
         }
     }
 
-    fn extract_ref(&self) -> Option<Atom> {
+    fn extract_ref(&self) -> Option<SmolStr> {
         match *self {
             Ast::Refer(Id(ref id), ..) => Some(id.clone()),
             _ => None,
         }
     }
 
-    fn extract_ref_is_num(&self) -> Option<(Atom, i32)> {
+    fn extract_ref_is_num(&self) -> Option<(SmolStr, i32)> {
         if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
             if let (Some(id), Some(n)) = (left.extract_ref(), right.extract_num()) {
                 return Some((id, n));
@@ -278,14 +280,14 @@ impl Ast {
         None
     }
 
-    fn extract_fun_call(&self) -> Option<(Atom, &[Ast])> {
+    fn extract_fun_call(&self) -> Option<(SmolStr, &[Ast])> {
         match *self {
             Ast::Call(Id(ref id), ref args, ..) => Some((id.clone(), args)),
             _ => None,
         }
     }
 
-    fn extract_fun_call_is_num(&self) -> Option<((Atom, &[Ast]), i32)> {
+    fn extract_fun_call_is_num(&self) -> Option<((SmolStr, &[Ast]), i32)> {
         if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
             if let (Some(fun), Some(n)) = (left.extract_fun_call(), right.extract_num()) {
                 return Some((fun, n));
@@ -636,7 +638,7 @@ impl<'a> Parser<'a> {
                     // dot calls handled later
                     Err(ListParseEdgeCase::DotCall(list)) | Ok(Some(list)) => list,
                     Ok(None) => {
-                        let id = self.consume_any(&[Id("identifier".into()), Num(0)])?;
+                        let id = self.consume_any(&[ID_TOKEN, Num(0)])?;
                         if self.current_token == OpnBrace {
                             // function call
                             match self.fun_call(None, id)? {
@@ -664,7 +666,7 @@ impl<'a> Parser<'a> {
     fn dotcall(&mut self) -> Res<Ast> {
         let mut out = self.num()?;
         while self.consume_maybe(Dot)?.is_some() {
-            let fun_id = self.consume(Id("identifier".into()))?;
+            let fun_id = self.consume(ID_TOKEN)?;
             out = self.fun_call(Some(out), fun_id)?;
         }
         Ok(out)
@@ -824,9 +826,9 @@ impl<'a> Parser<'a> {
             if self.consume_maybe(While)?.is_some() {
                 (self.expr()?, None)
             } else if self.consume_maybe(For)?.is_some() {
-                let mut idx_id = Some(self.consume(Id("identifier".into()))?);
+                let mut idx_id = Some(self.consume(ID_TOKEN)?);
                 let item_id = match self.consume_maybe(Comma)? {
-                    Some(_) => self.consume(Id("identifier".into()))?,
+                    Some(_) => self.consume(ID_TOKEN)?,
                     _ => idx_id.take().unwrap(),
                 };
 
@@ -880,8 +882,8 @@ impl<'a> Parser<'a> {
     fn line_fun(&mut self, scope: usize) -> Res<Ast> {
         let src = self.current_src_ref;
         self.consume(Fun)?;
-        let id_name: Atom = "identifier".into();
-        let id = self.consume(Id(id_name.clone()))?;
+        let id_name = ID_TOKEN;
+        let id = self.consume(id_name.clone())?;
         self.consume(OpnBrace)?;
         let mut signature = String::new();
         match id {
@@ -889,7 +891,7 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         };
         let mut arg_ids = vec![];
-        while let Some(mut arg) = self.consume_maybe(Id(id_name.clone()))? {
+        while let Some(mut arg) = self.consume_maybe(id_name.clone())? {
             if self.consume_maybe(Square)?.is_some() {
                 arg = id_to_seq_id(&arg);
                 signature += "s"
@@ -946,7 +948,7 @@ impl<'a> Parser<'a> {
         let src = self.current_src_ref;
         if let Id(..) = self.current_token {
             if self.lexer.peek()? == Square && (edge_cases || self.lexer.peekn(2)? != Dot) {
-                let id = self.consume(Id("identifier".into()))?;
+                let id = self.consume(ID_TOKEN)?;
                 self.consume(Square)?;
                 let refer =
                     Ast::ReferSeq(id_to_seq_id(&id), src.up_to_end_of(self.current_src_ref));
@@ -999,7 +1001,7 @@ impl<'a> Parser<'a> {
     fn line_seq(&mut self) -> Res<Ast> {
         let src = self.current_src_ref;
         self.consume(Seq)?;
-        let seq_id = id_to_seq_id(&self.consume(Id("identifier".into()))?);
+        let seq_id = id_to_seq_id(&self.consume(ID_TOKEN)?);
         self.consume(Square)?;
         Ok(if self.consume_maybe(Ass)?.is_some() {
             Ast::AssignSeq(
@@ -1037,7 +1039,7 @@ impl<'a> Parser<'a> {
 
         // var id = expr
         if self.consume_maybe(Var)?.is_some() {
-            let id = self.consume(Id("identifier".into()))?;
+            let id = self.consume(ID_TOKEN)?;
             if self.consume_maybe(Ass)?.is_none() {
                 let src = src.up_to(self.current_src_ref);
                 self.consume_any(&[Ass, Eol, Eof])?;
@@ -1052,7 +1054,7 @@ impl<'a> Parser<'a> {
         if let Id(_) = self.current_token {
             let peek = self.lexer.peek()?;
             if peek == Ass {
-                let id = self.consume(Id("identifier".into()))?;
+                let id = self.consume(ID_TOKEN)?;
                 self.consume(Ass)?;
                 let expr = self.expr()?;
                 let src = src.up_to_end_of(expr.src());
@@ -1061,7 +1063,7 @@ impl<'a> Parser<'a> {
             }
             if let OpAss(op) = peek {
                 let id_src = self.current_src_ref;
-                let id = self.consume(Id("identifier".into()))?;
+                let id = self.consume(ID_TOKEN)?;
                 let refer = Ast::Refer(id.clone(), id_src);
                 self.next_token()?;
                 let expr = self.expr()?;
@@ -1185,20 +1187,20 @@ impl<'a> Parser<'a> {
 
                     Ast::If(..) | Ast::While(..) | Ast::ForIn(..) | Ast::AssignFun(..) => {
                         let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
-                        return Err(BadderError::at(indent_src_ref)
-                            .describe(
-                                Stage::Parser,
-                                "Incorrect indentation, exactly +1 indent must used after a line starting with `if,loop,for,while,fun`"
-                            ));
+                        return Err(BadderError::at(indent_src_ref).describe(
+                            Stage::Parser,
+                            "Incorrect indentation, exactly +1 indent must used after a line \
+                                starting with `if,loop,for,while,fun`",
+                        ));
                     }
 
                     _ => {
                         let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
-                        return Err(BadderError::at(indent_src_ref)
-                            .describe(
-                                Stage::Parser,
-                                "Incorrect indentation, +1 indent can only occur after a line starting with `if,loop,for,while,fun`"
-                            ));
+                        return Err(BadderError::at(indent_src_ref).describe(
+                            Stage::Parser,
+                            "Incorrect indentation, +1 indent can only occur after a line \
+                                starting with `if,loop,for,while,fun`",
+                        ));
                     }
                 }
             }
@@ -1262,7 +1264,7 @@ impl<'a> Parser<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssignId {
-    pub id: Atom,
+    pub id: SmolStr,
     pub kind: AssignIdKind,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1603,27 +1605,27 @@ mod parser_test {
             vec![
                 AssignId {
                     kind: AssignIdKind::Var,
-                    id: Atom::from("foo")
+                    id: SmolStr::from("foo")
                 },
                 AssignId {
                     kind: AssignIdKind::Fun,
-                    id: Atom::from("do_something")
+                    id: SmolStr::from("do_something")
                 },
                 AssignId {
                     kind: AssignIdKind::Seq,
-                    id: Atom::from("foos")
+                    id: SmolStr::from("foos")
                 },
                 AssignId {
                     kind: AssignIdKind::Var,
-                    id: Atom::from("bar")
+                    id: SmolStr::from("bar")
                 },
                 AssignId {
                     kind: AssignIdKind::Var,
-                    id: Atom::from("foo2")
+                    id: SmolStr::from("foo2")
                 },
                 AssignId {
                     kind: AssignIdKind::Var,
-                    id: Atom::from("bar2")
+                    id: SmolStr::from("bar2")
                 },
             ]
             .into_iter()

@@ -1,12 +1,12 @@
 use super::Int;
 use crate::common::*;
+use smol_str::SmolStr;
 use std::{borrow::Cow, fmt, iter::Peekable, str::Chars};
-use string_cache::DefaultAtom as Atom;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub enum Token {
     Num(Int),
-    Id(Atom),
+    Id(SmolStr),
 
     // Operators
     Pls,
@@ -121,7 +121,7 @@ impl Token {
         }
     }
 
-    pub fn parse_id<A: Into<Atom>>(id: A) -> Token {
+    pub fn parse_id<A: Into<SmolStr>>(id: A) -> Token {
         let id = id.into();
         match id.as_ref() {
             "var" => Var,
