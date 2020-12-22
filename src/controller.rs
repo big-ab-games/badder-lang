@@ -166,7 +166,9 @@ impl Overseer for ControllerOverseer {
 
     fn oversee_after(&mut self, _stack: &[FxIndexMap<Token, FrameData>], ast: &Ast) {
         if let Ast::Call(ref id, ..) = *ast {
-            let _ = self.to_controller.send(OverseerUpdate::FinishedFunCall(id.clone()));
+            let _ = self
+                .to_controller
+                .send(OverseerUpdate::FinishedFunCall(id.clone()));
         }
     }
 
@@ -179,8 +181,13 @@ impl Overseer for ControllerOverseer {
         id: Token,
         args: Vec<(Int, IntFlag)>,
     ) -> Result<(Int, IntFlag), String> {
-        debug!("ControllerOverseer awaiting answer: {:?}, args {:?}", id, args);
-        self.external_function_call.send(ExternalCall { id, args }).expect("send");
+        debug!(
+            "ControllerOverseer awaiting answer: {:?}, args {:?}",
+            id, args
+        );
+        self.external_function_call
+            .send(ExternalCall { id, args })
+            .expect("send");
 
         // block until answer received
         match self.external_function_answer.recv() {
@@ -260,7 +267,12 @@ impl Controller {
     /// Unblocks current waiting phase's execution, if it is blocked.
     /// Requires a recent (in terms of set pause_time) call to #refresh() to be valid
     pub fn unpause(&mut self) {
-        if let Some(Phase { id, unpaused: false, .. }) = self.current_phase {
+        if let Some(Phase {
+            id,
+            unpaused: false,
+            ..
+        }) = self.current_phase
+        {
             // ignore errors as send can happen after execution finishes
             let _ = self.to_overseer.send(Ok(id));
             self.current_phase.as_mut().unwrap().unpaused = true;
@@ -279,7 +291,11 @@ impl Controller {
     /// Returns current execution phase, requires a recent (in terms of set pause_time)
     /// call to #refresh() to be valid
     pub fn current_phase(&self) -> Option<Phase> {
-        if self.cancelled { None } else { self.current_phase.clone() }
+        if self.cancelled {
+            None
+        } else {
+            self.current_phase.clone()
+        }
     }
 
     pub fn run_stats(&self) -> &RunStats {
@@ -367,7 +383,11 @@ impl Controller {
     }
 
     fn current_call_info(&self) -> Vec<SourceRef> {
-        if self.cancelled { vec![] } else { self.fun_call_history.iter().rev().cloned().collect() }
+        if self.cancelled {
+            vec![]
+        } else {
+            self.fun_call_history.iter().rev().cloned().collect()
+        }
     }
 
     /// Adds an external function signature
@@ -382,13 +402,20 @@ impl Controller {
     }
 
     pub fn current_external_call(&self) -> Option<ExternalCall> {
-        if self.cancelled { None } else { self.current_external_call.clone() }
+        if self.cancelled {
+            None
+        } else {
+            self.current_external_call.clone()
+        }
     }
 
     pub fn answer_external_call(&mut self, result: Result<(Int, IntFlag), String>) {
         self.current_external_call = None;
         if let Err(err) = self.external_function_answer.send(result) {
-            warn!("Comms failure with badder runtime when answering external call: {}", err);
+            warn!(
+                "Comms failure with badder runtime when answering external call: {}",
+                err
+            );
         }
     }
 

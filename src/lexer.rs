@@ -174,7 +174,11 @@ impl Token {
     }
 
     pub fn id_str(&self) -> Option<&str> {
-        if let Token::Id(ref inner) = *self { Some(inner) } else { None }
+        if let Token::Id(ref inner) = *self {
+            Some(inner)
+        } else {
+            None
+        }
     }
 
     pub fn is_binary_op(&self) -> bool {
@@ -209,7 +213,13 @@ impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Lexer<'a> {
         let mut chars = code.chars().peekable();
         let first = chars.next();
-        Lexer { chars, current_char: first, newline: true, line_num: 1, char_num: 1 }
+        Lexer {
+            chars,
+            current_char: first,
+            newline: true,
+            line_num: 1,
+            char_num: 1,
+        }
     }
 
     fn next_char(&mut self) -> Option<char> {
@@ -226,7 +236,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn cursor(&self) -> SourceRef {
-        SourceRef((self.line_num, self.char_num), (self.line_num, self.char_num + 1))
+        SourceRef(
+            (self.line_num, self.char_num),
+            (self.line_num, self.char_num + 1),
+        )
     }
 
     /// Peeks any distance of tokens forward

@@ -67,7 +67,12 @@ impl fmt::Debug for Ast {
             Ast::Reassign(ref t, ref expr, ..) => write!(f, "Reassign({:?},{:?})", t, expr),
             Ast::Refer(ref t, ..) => write!(f, "Refer({:?})", t),
             Ast::If(ref bool_expr, _, _, is_else, ..) => {
-                write!(f, "{}If({:?},_,_)", if is_else { "Else" } else { "" }, bool_expr)
+                write!(
+                    f,
+                    "{}If({:?},_,_)",
+                    if is_else { "Else" } else { "" },
+                    bool_expr
+                )
             }
             Ast::While(ref bool_expr, ..) => write!(f, "While({:?},_)", bool_expr),
             Ast::ForIn(None, ref id, ref list, ..) => write!(f, "ForIn({:?}:{:?})", id, list),
@@ -118,7 +123,13 @@ impl Ast {
 
     pub fn if_else(expr: Ast, block: Ast, else_if: Ast, is_else: bool, if_start: SourceRef) -> Ast {
         let src = if_start.up_to_end_of(expr.src());
-        Ast::If(expr.into(), block.into(), Some(else_if.into()), is_else, src)
+        Ast::If(
+            expr.into(),
+            block.into(),
+            Some(else_if.into()),
+            is_else,
+            src,
+        )
     }
 
     pub fn num(n: Int, src: SourceRef) -> Ast {
@@ -137,7 +148,13 @@ impl Ast {
                 out + &next.debug_string()
             }
             Ast::Line(scope, ref expr, src, ..) => {
-                format!("{:3}:-{}{}> {}", (src.0).0, scope, "-".repeat(scope), expr.debug_string())
+                format!(
+                    "{:3}:-{}{}> {}",
+                    (src.0).0,
+                    scope,
+                    "-".repeat(scope),
+                    expr.debug_string()
+                )
             }
             Ast::If(ref expr, ref block, None, is_else, ..) => format!(
                 "{}({})\n{}",
@@ -192,7 +209,11 @@ impl Ast {
     }
 
     fn line_scope(&self) -> Option<usize> {
-        if let Ast::Line(scope, ..) = *self { Some(scope) } else { None }
+        if let Ast::Line(scope, ..) = *self {
+            Some(scope)
+        } else {
+            None
+        }
     }
 
     pub fn src(&self) -> SourceRef {
@@ -280,7 +301,11 @@ impl Ast {
                 let lhs_numeric = left.is_pure_numeric_expr();
                 let rhs_numeric = right.is_pure_numeric_expr();
                 if lhs_numeric && !rhs_numeric || !lhs_numeric && rhs_numeric {
-                    let and_or = if let Ast::BinOp(Or, ..) = *self { "or" } else { "and" };
+                    let and_or = if let Ast::BinOp(Or, ..) = *self {
+                        "or"
+                    } else {
+                        "and"
+                    };
 
                     let mut msg = format!(
                         "`{lhs} {op} {rhs}` misuse, cannot mix number literals & expressions.",
@@ -356,13 +381,19 @@ impl From<(Token, usize)> for TokenGuest {
     #[inline]
     #[allow(clippy::range_plus_one)]
     fn from((token, scope): (Token, usize)) -> Self {
-        Self { token, scope: scope..scope + 1 }
+        Self {
+            token,
+            scope: scope..scope + 1,
+        }
     }
 }
 impl From<(Token, RangeFrom<usize>)> for TokenGuest {
     #[inline]
     fn from((token, RangeFrom { start }): (Token, RangeFrom<usize>)) -> Self {
-        Self { token, scope: start..usize::max_value() }
+        Self {
+            token,
+            scope: start..usize::max_value(),
+        }
     }
 }
 
@@ -515,10 +546,11 @@ impl<'a> Parser<'a> {
                         )
                         .into(),
                         (false, _) => "".into(),
-                        (true, false) => {
-                            format!(", something like `{}` was expected", maybe_expected.join(","))
-                                .into()
-                        }
+                        (true, false) => format!(
+                            ", something like `{}` was expected",
+                            maybe_expected.join(",")
+                        )
+                        .into(),
                     }
                 });
 
@@ -768,8 +800,10 @@ impl<'a> Parser<'a> {
             &guests,
         )?;
         if block.is_none() {
-            return Err(BadderError::at(src.up_to_next_line())
-                .describe(Stage::Parser, "Expected line after `if,else` with exactly +1 indent"));
+            return Err(BadderError::at(src.up_to_next_line()).describe(
+                Stage::Parser,
+                "Expected line after `if,else` with exactly +1 indent",
+            ));
         }
         // else will be in unused_lines as they would mark the end of an if block
         if let Some(line) = self.unused_lines.pop() {
@@ -798,7 +832,10 @@ impl<'a> Parser<'a> {
 
                 self.consume(In)?;
                 let (list, _) = self.list()?;
-                (Ast::Empty(src.up_to_end_of(self.current_src_ref)), Some((idx_id, item_id, list)))
+                (
+                    Ast::Empty(src.up_to_end_of(self.current_src_ref)),
+                    Some((idx_id, item_id, list)),
+                )
             } else {
                 self.consume(Loop)?;
                 (Ast::num(1, src.up_to_end_of(self.current_src_ref)), None)
@@ -882,7 +919,12 @@ impl<'a> Parser<'a> {
                 "Expected line after `fun` declaration with exactly +1 indent",
             ));
         }
-        Ok(Ast::AssignFun(Id(signature.into()), arg_ids, block.unwrap().into(), src))
+        Ok(Ast::AssignFun(
+            Id(signature.into()),
+            arg_ids,
+            block.unwrap().into(),
+            src,
+        ))
     }
 
     /// return optional list match
@@ -960,7 +1002,11 @@ impl<'a> Parser<'a> {
         let seq_id = id_to_seq_id(&self.consume(Id("identifier".into()))?);
         self.consume(Square)?;
         Ok(if self.consume_maybe(Ass)?.is_some() {
-            Ast::AssignSeq(seq_id, self.list()?.0.into(), src.up_to(self.current_src_ref))
+            Ast::AssignSeq(
+                seq_id,
+                self.list()?.0.into(),
+                src.up_to(self.current_src_ref),
+            )
         } else {
             let src = src.up_to(self.current_src_ref);
             Ast::AssignSeq(seq_id, Ast::Seq(vec![], src).into(), src)
@@ -1329,7 +1375,10 @@ mod parser_test {
 
         let mut ast = Parser::parse_str("seq some_id[] = 1345, 2").unwrap();
 
-        ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((1, 1), (1, 24)));
+        ast = *expect_ast!(
+            ast = Ast::Line(0, ast, ..),
+            src = SourceRef((1, 1), (1, 24))
+        );
         ast = *expect_ast!(
             ast = Ast::AssignSeq(_, ast, ..),
             src = SourceRef((1, 1), (1, 24))
@@ -1352,12 +1401,21 @@ mod parser_test {
 
         // `var abc`
         let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((1, 1), (1, 8)));
-        let ast = *expect_ast!(ast = Ast::Assign(_, ast, ..), src = SourceRef((1, 1), (1, 8)));
+        let ast = *expect_ast!(
+            ast = Ast::Assign(_, ast, ..),
+            src = SourceRef((1, 1), (1, 8))
+        );
         expect_ast!(ast = Ast::Num(ast, ..), src = SourceRef((1, 1), (1, 8)));
 
         // `var bcd`
-        let ast = *expect_ast!(next = Ast::Line(0, next, ..), src = SourceRef((2, 1), (2, 8)));
-        let ast = *expect_ast!(ast = Ast::Assign(_, ast, ..), src = SourceRef((2, 1), (2, 8)));
+        let ast = *expect_ast!(
+            next = Ast::Line(0, next, ..),
+            src = SourceRef((2, 1), (2, 8))
+        );
+        let ast = *expect_ast!(
+            ast = Ast::Assign(_, ast, ..),
+            src = SourceRef((2, 1), (2, 8))
+        );
         expect_ast!(ast = Ast::Num(ast, ..), src = SourceRef((2, 1), (2, 8)));
     }
 
@@ -1382,38 +1440,74 @@ mod parser_test {
         let (ast, next) = expect_line_pair!(ast);
 
         // `var a = 123`
-        let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((1, 1), (1, 12)));
-        let ast = *expect_ast!(ast = Ast::Assign(_, ast, ..), src = SourceRef((1, 1), (1, 12)));
+        let ast = *expect_ast!(
+            ast = Ast::Line(0, ast, ..),
+            src = SourceRef((1, 1), (1, 12))
+        );
+        let ast = *expect_ast!(
+            ast = Ast::Assign(_, ast, ..),
+            src = SourceRef((1, 1), (1, 12))
+        );
         expect_ast!(ast = Ast::Num(ast, ..), src = SourceRef((1, 9), (1, 12)));
 
         // `if a > 100`
-        let ast = *expect_ast!(next = Ast::Line(0, next, ..), src = SourceRef((2, 1), (2, 11)));
+        let ast = *expect_ast!(
+            next = Ast::Line(0, next, ..),
+            src = SourceRef((2, 1), (2, 11))
+        );
         let (expr, block, next) = expect_if_ast!(ast, src = SourceRef((2, 1), (2, 11)));
         let (left, right) = expect_bin_op!(expr, src = SourceRef((2, 4), (2, 11)));
         expect_ast!(left = Ast::Refer(..), src = SourceRef((2, 4), (2, 5)));
-        expect_ast!(right = Ast::Num(Num(100), ..), src = SourceRef((2, 8), (2, 11)));
+        expect_ast!(
+            right = Ast::Num(Num(100), ..),
+            src = SourceRef((2, 8), (2, 11))
+        );
 
         // `    a *= 2` -> `    a = a * 2`
-        let ast = *expect_ast!(block = Ast::Line(1, block, ..), src = SourceRef((3, 1), (3, 11)));
-        let ast = *expect_ast!(ast = Ast::Reassign(_, ast, ..), src = SourceRef((3, 5), (3, 11)));
+        let ast = *expect_ast!(
+            block = Ast::Line(1, block, ..),
+            src = SourceRef((3, 1), (3, 11))
+        );
+        let ast = *expect_ast!(
+            ast = Ast::Reassign(_, ast, ..),
+            src = SourceRef((3, 5), (3, 11))
+        );
         let (left, right) = expect_bin_op!(ast, src = SourceRef((3, 5), (3, 11)));
         expect_ast!(left = Ast::Refer(..), src = SourceRef((3, 5), (3, 6)));
-        expect_ast!(right = Ast::Num(Num(2), ..), src = SourceRef((3, 10), (3, 11)));
+        expect_ast!(
+            right = Ast::Num(Num(2), ..),
+            src = SourceRef((3, 10), (3, 11))
+        );
 
         // `else if a > 50`
         let ast = next.expect("else");
-        let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((4, 1), (4, 15)));
+        let ast = *expect_ast!(
+            ast = Ast::Line(0, ast, ..),
+            src = SourceRef((4, 1), (4, 15))
+        );
         let (expr, block, next) = expect_if_ast!(ast, src = SourceRef((4, 1), (4, 15)));
         let (left, right) = expect_bin_op!(expr, src = SourceRef((4, 9), (4, 15)));
         expect_ast!(left = Ast::Refer(..), src = SourceRef((4, 9), (4, 10)));
-        expect_ast!(right = Ast::Num(Num(50), ..), src = SourceRef((4, 13), (4, 15)));
+        expect_ast!(
+            right = Ast::Num(Num(50), ..),
+            src = SourceRef((4, 13), (4, 15))
+        );
 
         // `    a = a / 3`
-        let ast = *expect_ast!(block = Ast::Line(1, block, ..), src = SourceRef((5, 1), (5, 14)));
-        let ast = *expect_ast!(ast = Ast::Reassign(_, ast, ..), src = SourceRef((5, 5), (5, 14)));
+        let ast = *expect_ast!(
+            block = Ast::Line(1, block, ..),
+            src = SourceRef((5, 1), (5, 14))
+        );
+        let ast = *expect_ast!(
+            ast = Ast::Reassign(_, ast, ..),
+            src = SourceRef((5, 5), (5, 14))
+        );
         let (left, right) = expect_bin_op!(ast, src = SourceRef((5, 9), (5, 14)));
         expect_ast!(left = Ast::Refer(..), src = SourceRef((5, 9), (5, 10)));
-        expect_ast!(right = Ast::Num(Num(3), ..), src = SourceRef((5, 13), (5, 14)));
+        expect_ast!(
+            right = Ast::Num(Num(3), ..),
+            src = SourceRef((5, 13), (5, 14))
+        );
 
         // `else`
         let ast = next.expect("else");
@@ -1438,7 +1532,10 @@ mod parser_test {
 
         let (ast, next) = expect_line_pair!(ast);
 
-        let ast = *expect_ast!(ast = Ast::Line(0, ast, ..), src = SourceRef((1, 1), (1, 14)));
+        let ast = *expect_ast!(
+            ast = Ast::Line(0, ast, ..),
+            src = SourceRef((1, 1), (1, 14))
+        );
         let ast = &*expect_ast!(
             ast = Ast::AssignFun(.., ast, _),
             src = SourceRef((1, 1), (1, 14))
@@ -1449,11 +1546,20 @@ mod parser_test {
         );
         expect_ast!(ast = &Ast::Return(ref ast, ..), src = SourceRef((2, 5), (2, 17)));
 
-        let ast = *expect_ast!(next = Ast::Line(0, next, ..), src = SourceRef((3, 1), (3, 19)));
-        let ast =
-            expect_ast!(ast = Ast::Call(_, ast, ..), src = SourceRef((3, 1), (3, 19))).remove(0);
-        let ast =
-            expect_ast!(ast = Ast::Call(_, ast, ..), src = SourceRef((3, 8), (3, 18))).remove(0);
+        let ast = *expect_ast!(
+            next = Ast::Line(0, next, ..),
+            src = SourceRef((3, 1), (3, 19))
+        );
+        let ast = expect_ast!(
+            ast = Ast::Call(_, ast, ..),
+            src = SourceRef((3, 1), (3, 19))
+        )
+        .remove(0);
+        let ast = expect_ast!(
+            ast = Ast::Call(_, ast, ..),
+            src = SourceRef((3, 8), (3, 18))
+        )
+        .remove(0);
         expect_ast!(ast = Ast::Num(Num(2), ..), src = SourceRef((3, 8), (3, 9)));
     }
 
@@ -1495,12 +1601,30 @@ mod parser_test {
         assert_eq!(
             ids,
             vec![
-                AssignId { kind: AssignIdKind::Var, id: Atom::from("foo") },
-                AssignId { kind: AssignIdKind::Fun, id: Atom::from("do_something") },
-                AssignId { kind: AssignIdKind::Seq, id: Atom::from("foos") },
-                AssignId { kind: AssignIdKind::Var, id: Atom::from("bar") },
-                AssignId { kind: AssignIdKind::Var, id: Atom::from("foo2") },
-                AssignId { kind: AssignIdKind::Var, id: Atom::from("bar2") },
+                AssignId {
+                    kind: AssignIdKind::Var,
+                    id: Atom::from("foo")
+                },
+                AssignId {
+                    kind: AssignIdKind::Fun,
+                    id: Atom::from("do_something")
+                },
+                AssignId {
+                    kind: AssignIdKind::Seq,
+                    id: Atom::from("foos")
+                },
+                AssignId {
+                    kind: AssignIdKind::Var,
+                    id: Atom::from("bar")
+                },
+                AssignId {
+                    kind: AssignIdKind::Var,
+                    id: Atom::from("foo2")
+                },
+                AssignId {
+                    kind: AssignIdKind::Var,
+                    id: Atom::from("bar2")
+                },
             ]
             .into_iter()
             .collect()
@@ -1528,7 +1652,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
-        assert!(err.description.contains("`>=`"), "error did not suggest `>=`");
+        assert!(
+            err.description.contains("`>=`"),
+            "error did not suggest `>=`"
+        );
     }
 
     #[test]
@@ -1547,7 +1674,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
-        assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
+        assert!(
+            err.description.contains("`<=`"),
+            "error did not suggest `<=`"
+        );
     }
 
     #[test]
@@ -1559,7 +1689,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((2, 3), (2, 4)));
-        assert!(err.description.contains("`+= 1`"), "error did not suggest `+= 1`");
+        assert!(
+            err.description.contains("`+= 1`"),
+            "error did not suggest `+= 1`"
+        );
     }
 
     #[test]
@@ -1571,7 +1704,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
-        assert!(err.description.contains("`is` or `>`"), "error did not suggest `is` or `>`");
+        assert!(
+            err.description.contains("`is` or `>`"),
+            "error did not suggest `is` or `>`"
+        );
     }
 
     #[test]
@@ -1583,7 +1719,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
-        assert!(err.description.contains("`<=`"), "error did not suggest `<=`");
+        assert!(
+            err.description.contains("`<=`"),
+            "error did not suggest `<=`"
+        );
     }
 
     #[test]
@@ -1607,7 +1746,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
-        assert!(err.description.contains("`is`"), "error did not suggest `is`");
+        assert!(
+            err.description.contains("`is`"),
+            "error did not suggest `is`"
+        );
     }
 
     #[test]
@@ -1619,7 +1761,10 @@ mod helpful_error {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
-        assert!(err.description.contains("`is`"), "error did not suggest `is`");
+        assert!(
+            err.description.contains("`is`"),
+            "error did not suggest `is`"
+        );
     }
 
     #[test]
@@ -1656,7 +1801,13 @@ mod helpful_error {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec!["fun do_scan(n)", "    n", "if do_scan(2) is 1 or 2", "    0"].join("\n"),
+            &vec![
+                "fun do_scan(n)",
+                "    n",
+                "if do_scan(2) is 1 or 2",
+                "    0",
+            ]
+            .join("\n"),
         )
         .expect_err("parse");
 
@@ -1731,7 +1882,10 @@ mod issues {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((2, 1), (2, 5)));
-        assert!(err.description.contains("indent"), "error did contain 'indent'");
+        assert!(
+            err.description.contains("indent"),
+            "error did contain 'indent'"
+        );
     }
 
     #[test]
@@ -1743,7 +1897,10 @@ mod issues {
         println!("Got error: {:?}", err);
 
         assert_eq!(err.src, SourceRef((3, 1), (3, 13)));
-        assert!(err.description.contains("indent"), "error did contain 'indent'");
+        assert!(
+            err.description.contains("indent"),
+            "error did contain 'indent'"
+        );
     }
 
     #[test]
