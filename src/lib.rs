@@ -149,6 +149,7 @@ impl StackKey {
 use crate::{FrameData::*, InterpreterUpFlow::*};
 
 pub trait Overseer {
+    #[allow(clippy::result_unit_err)]
     fn oversee(
         &mut self,
         stack: &[FxIndexMap<Token, FrameData>],

@@ -179,8 +179,24 @@ impl Token {
     }
 
     pub fn is_binary_op(&self) -> bool {
-        matches!(*self, Pls | Sub | Mul | Div | Ass | Gt | GtEq | Lt | LtEq | Mod | OpAss(_)
-            | Is | And | Or | In | Dot)
+        matches!(
+            *self,
+            Pls | Sub
+                | Mul
+                | Div
+                | Ass
+                | Gt
+                | GtEq
+                | Lt
+                | LtEq
+                | Mod
+                | OpAss(_)
+                | Is
+                | And
+                | Or
+                | In
+                | Dot
+        )
     }
 }
 
