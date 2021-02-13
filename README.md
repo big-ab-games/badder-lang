@@ -1,4 +1,5 @@
-# badder-lang
+# badder-lang [![crates.io](https://img.shields.io/crates/v/badder_lang.svg)](https://crates.io/crates/badder_lang) [![Documentation](https://docs.rs/badder_lang/badge.svg)](https://docs.rs/badder_lang)
+
 A specialized programming language built for programming puzzle game Robo Instructus.
 
 ## Minimum supported rust compiler
