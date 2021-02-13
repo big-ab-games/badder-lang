@@ -3,7 +3,10 @@ name = "badder_lang"
 version = "0.1.0"
 authors = ["Alex Butler <alexheretic@gmail.com>"]
 edition = "2018"
-publish = false
+description = "A specialized programming language built for programming puzzle game Robo Instructus"
+repository = "https://github.com/big-ab-games/badder-lang"
+license = "Apache-2.0"
+readme="README.md"
 
 [dependencies]
 indexmap = "1"
