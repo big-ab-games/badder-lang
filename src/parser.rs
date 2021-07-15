@@ -454,7 +454,7 @@ impl<'a> Parser<'a> {
         loop {
             match (last_token, lexer.next_token()?) {
                 (Some(kind), (Id(id), ..)) => {
-                    ids.insert(AssignId { kind, id });
+                    ids.insert(AssignId { id, kind });
                 }
                 (_, (Eof, ..)) => break,
                 (_, (token, ..)) => last_token = AssignIdKind::try_from(&token),

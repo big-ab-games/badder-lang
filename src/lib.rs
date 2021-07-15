@@ -1089,7 +1089,7 @@ impl<O: Overseer> Interpreter<O> {
         match self.eval(ast, 0, StackKey::default()).ignore_flag() {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
-            Err(err) => panic!(err),
+            Err(err) => panic!("{:?}", err),
         }
     }
 }
@@ -1178,7 +1178,7 @@ mod util {
         if out.is_ok() {
             print_program_debug(code).unwrap();
         }
-        assert!(out.is_err(), format!("Unexpected {:?}", out));
+        assert!(out.is_err(), "Unexpected {:?}", out);
         if let Err(reason) = out {
             return reason;
         }
@@ -1215,7 +1215,7 @@ mod util {
             $(
                 let substring_lower = $sub.to_lowercase();
                 assert!(err_lower.contains(substring_lower.as_str()),
-                    format!("Substring:`{}` not in error: `{:?}`", $sub, err));
+                    "Substring:`{}` not in error: `{:?}`", $sub, err);
             )+
         };
         ($( $code:expr );+ =>X $( $sub:expr ),+; src = $src_ref:expr ) => {
@@ -1228,7 +1228,7 @@ mod util {
             $(
                 let substring_lower = $sub.to_lowercase();
                 assert!(err_lower.contains(substring_lower.as_str()),
-                    format!("Substring:`{}` not in error: `{:?}`", $sub, err));
+                    "Substring:`{}` not in error: `{:?}`", $sub, err);
             )+
             assert_eq!(err.src, $src_ref);
         };
