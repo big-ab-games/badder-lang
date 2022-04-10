@@ -169,7 +169,7 @@ impl Ast {
                 expr.debug_string(),
                 block.debug_string(),
                 elif.debug_string().replacen(
-                    "\n",
+                    '\n',
                     &format!(" (attached to line {})\n", (src.0).0),
                     1
                 )
@@ -179,7 +179,7 @@ impl Ast {
                 expr.debug_string(),
                 block.debug_string(),
                 elif.debug_string().replacen(
-                    "\n",
+                    '\n',
                     &format!(" (attached to line {})\n", (src.0).0),
                     1
                 )
