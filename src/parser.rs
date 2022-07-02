@@ -9,6 +9,7 @@ use smol_str::SmolStr;
 use std::{
     borrow::Cow,
     fmt,
+    fmt::Write,
     ops::{Range, RangeFrom},
     rc::Rc,
     sync::Arc,
@@ -310,9 +311,8 @@ impl Ast {
                     };
 
                     let mut msg = format!(
-                        "`{lhs} {op} {rhs}` misuse, cannot mix number literals & expressions.",
+                        "`{lhs} {and_or} {rhs}` misuse, cannot mix number literals & expressions.",
                         lhs = if lhs_numeric { "NUM" } else { "EXPR" },
-                        op = and_or,
                         rhs = if rhs_numeric { "NUM" } else { "EXPR" },
                     );
 
@@ -322,13 +322,11 @@ impl Ast {
                             (left.extract_ref_is_num(), right.extract_num())
                         {
                             // `foo is 1 or 2`
-                            msg.push_str(&format!(
-                                "\n\nDid you mean `{id} is {n} {op} {id} is {rhs}`?",
-                                id = id,
-                                n = n,
-                                op = and_or,
-                                rhs = rhs,
-                            ));
+                            write!(
+                                msg,
+                                "\n\nDid you mean `{id} is {n} {and_or} {id} is {rhs}`?"
+                            )
+                            .unwrap();
                         } else if let (Some(((id, args), n)), Some(rhs)) =
                             (left.extract_fun_call_is_num(), right.extract_num())
                         {
@@ -338,14 +336,11 @@ impl Ast {
                                 fun_var_name = &fun_var_name["robo_".len()..];
                             }
                             let fun_call = if args.is_empty() { &*id } else { "..." };
-                            msg.push_str(&format!(
-                                "\n\nTry using a variable `var {id} = {call}`\nthen `{id} is {n} {op} {id} is {rhs}`",
+                            write!(msg,
+                                "\n\nTry using a variable `var {id} = {call}`\nthen `{id} is {n} {and_or} {id} is {rhs}`",
                                 id = fun_var_name,
                                 call = fun_call,
-                                n = n,
-                                op = and_or,
-                                rhs = rhs,
-                            ));
+                            ).unwrap();
                         }
                     }
 

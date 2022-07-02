@@ -297,7 +297,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
-            if c.is_digit(10) {
+            if c.is_ascii_digit() {
                 return Ok(Num(c as i32));
             }
 
@@ -393,7 +393,7 @@ impl<'a> Lexer<'a> {
         if let Num(_) = peek {
             let mut number_str = c.to_string();
             while let Some(c) = self.next_char() {
-                if c.is_digit(10) {
+                if c.is_ascii_digit() {
                     number_str.push(c);
                 } else {
                     break;
