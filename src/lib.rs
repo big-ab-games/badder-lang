@@ -39,7 +39,7 @@ pub(crate) const UNKNOWN_SRC_REF: SourceRef = SourceRef((0, 0), (0, 0));
 
 pub(crate) const NO_FLAG: IntFlag = 0;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Builtin {
     Size,
     SeqAdd,
