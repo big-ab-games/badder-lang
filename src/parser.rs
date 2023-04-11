@@ -845,7 +845,7 @@ impl<'a> Parser<'a> {
             } else {
                 let mut extended =
                     vec![(Break, scope + 1..).into(), (Continue, scope + 1..).into()];
-                extended.extend_from_slice(&*guests);
+                extended.extend_from_slice(&guests);
                 extended.into()
             }
         };
@@ -1541,7 +1541,7 @@ mod parser_test {
             ast = &Ast::Line(1, ref ast, ..),
             src = SourceRef((2, 1), (2, 17))
         );
-        expect_ast!(ast = &Ast::Return(ref ast, ..), src = SourceRef((2, 5), (2, 17)));
+        expect_ast!(ast = Ast::Return(ast, ..), src = SourceRef((2, 5), (2, 17)));
 
         let ast = *expect_ast!(
             next = Ast::Line(0, next, ..),

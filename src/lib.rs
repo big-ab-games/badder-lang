@@ -626,7 +626,7 @@ impl<O: Overseer> Interpreter<O> {
                     "Invalid sequence index {} not in empty sequence",
                     actual_index
                 ));
-            } else if seq_len as usize <= index {
+            } else if seq_len <= index {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
                     index, seq_len
@@ -677,7 +677,7 @@ impl<O: Overseer> Interpreter<O> {
                 )),
             }?;
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
-            if seq_len as usize <= index {
+            if seq_len <= index {
                 return parent_error(format!(
                     "Invalid sequence index {} not in 0..{} (or negative)",
                     index, seq_len
