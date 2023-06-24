@@ -1,3 +1,6 @@
+# 0.3
+* Update _indexmap_ to `2`.
+
 # 0.2
 * Update _smol_str_ to `0.2`.
 
