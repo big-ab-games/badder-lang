@@ -1,11 +1,11 @@
-# 0.3
+# 0.3.0
 * Update _indexmap_ to `2`.
 
-# 0.2
+# 0.2.0
 * Update _smol_str_ to `0.2`.
 
 # 0.1.1
 * Implement `Eq` for `Builtin`.
 
-# 0.1
+# 0.1.0
 * Initial public release.
