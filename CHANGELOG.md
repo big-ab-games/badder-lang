@@ -1,3 +1,6 @@
+# 0.3.1
+* Update _strsim_ to `0.11`.
+
 # 0.3.0
 * Update _indexmap_ to `2`.
 

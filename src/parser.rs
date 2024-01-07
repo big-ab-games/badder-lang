@@ -1392,7 +1392,7 @@ mod parser_test {
     fn assign_var() {
         let _ = env_logger::try_init();
 
-        let ast = Parser::parse_str(&vec!["var abc", "var bcd"].join("\n")).unwrap();
+        let ast = Parser::parse_str(&["var abc", "var bcd"].join("\n")).unwrap();
 
         let (ast, next) = expect_line_pair!(ast);
 
@@ -1421,7 +1421,7 @@ mod parser_test {
         let _ = env_logger::try_init();
 
         let ast = Parser::parse_str(
-            &vec![
+            &[
                 "var a = 123",
                 "if a > 100",
                 "    a *= 2",
@@ -1518,7 +1518,7 @@ mod parser_test {
         let _ = env_logger::try_init();
 
         let ast = Parser::parse_str(
-            &vec![
+            &[
                 "fun double(x)",
                 "    return x * 2 # used return to test it, also this comment",
                 "double(2.double())",
@@ -1565,7 +1565,7 @@ mod parser_test {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "fum double(x)", // `fun` misspelled -> id
                 "    return x * 2",
             ]
@@ -1638,7 +1638,7 @@ mod helpful_error {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "if 12 => 11", // `=>` misspelled
                 "    0",
             ]
@@ -1660,7 +1660,7 @@ mod helpful_error {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "if 12 =< 11", // `=>` misspelled
                 "    0",
             ]
@@ -1681,7 +1681,7 @@ mod helpful_error {
     fn var_plus_plus() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["var x", "x++"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["var x", "x++"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1696,7 +1696,7 @@ mod helpful_error {
     fn is_is_greater_than() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["12 is > 11"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["12 is > 11"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1711,7 +1711,7 @@ mod helpful_error {
     fn not_greater_than() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["12 not > 11"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["12 not > 11"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1726,7 +1726,7 @@ mod helpful_error {
     fn not_less_than_or_equal_to() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["12 not <= 11"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["12 not <= 11"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1738,7 +1738,7 @@ mod helpful_error {
     fn assignment_instead_of_is() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["if 12 = 11", "    0"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["if 12 = 11", "    0"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1753,7 +1753,7 @@ mod helpful_error {
     fn double_assignment_instead_of_is() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["if 12 == 11", "    0"].join("\n")).expect_err("parse");
+        let err = Parser::parse_str(&["if 12 == 11", "    0"].join("\n")).expect_err("parse");
 
         println!("Got error: {:?}", err);
 
@@ -1768,7 +1768,7 @@ mod helpful_error {
     fn variable_is_1_or_2() {
         let _ = env_logger::try_init();
 
-        let err = Parser::parse_str(&vec!["var scan = 1", "if scan is 1 or 2", "    0"].join("\n"))
+        let err = Parser::parse_str(&["var scan = 1", "if scan is 1 or 2", "    0"].join("\n"))
             .expect_err("parse");
 
         println!("Got error: {:?}", err);
@@ -1782,7 +1782,7 @@ mod helpful_error {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec!["fun do_scan()", "    2", "if do_scan() is 1 or 2", "    0"].join("\n"),
+            &["fun do_scan()", "    2", "if do_scan() is 1 or 2", "    0"].join("\n"),
         )
         .expect_err("parse");
 
@@ -1798,7 +1798,7 @@ mod helpful_error {
         let _ = env_logger::try_init();
 
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "fun do_scan(n)",
                 "    n",
                 "if do_scan(2) is 1 or 2",
@@ -1825,7 +1825,7 @@ mod issues {
     fn else_after_var() {
         let _ = env_logger::try_init();
         Parser::parse_str(
-            &vec![
+            &[
                 "if 1",
                 "    if 1",
                 "        0",
@@ -1842,7 +1842,7 @@ mod issues {
     fn return_in_function_body_with_loops() {
         let _ = env_logger::try_init();
         Parser::parse_str(
-            &vec![
+            &[
                 "fun some_func()",
                 "    for i in 1,2,3",
                 "        if i > 4",
@@ -1859,7 +1859,7 @@ mod issues {
     fn seq_nested_dot_calling() {
         let _ = env_logger::try_init();
         Parser::parse_str(
-            &vec![
+            &[
                 "fun plus(a1, a2)",
                 "    a1 + a2",
                 "seq list[]",
@@ -1873,7 +1873,7 @@ mod issues {
     #[test]
     fn over_indenting() {
         let _ = env_logger::try_init();
-        let err = Parser::parse_str(&vec!["var x", "    x = 1", "        x += 12"].join("\n"))
+        let err = Parser::parse_str(&["var x", "    x = 1", "        x += 12"].join("\n"))
             .expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
@@ -1888,7 +1888,7 @@ mod issues {
     #[test]
     fn over_indenting_after_if() {
         let _ = env_logger::try_init();
-        let err = Parser::parse_str(&vec!["var x", "if x is 0", "            x += 12"].join("\n"))
+        let err = Parser::parse_str(&["var x", "if x is 0", "            x += 12"].join("\n"))
             .expect_err("did not fail parse");
 
         println!("Got error: {:?}", err);
@@ -1904,7 +1904,7 @@ mod issues {
     fn boolean_mix_expr_number_literal() {
         let _ = env_logger::try_init();
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "var x = 4",
                 "if x is 1 or 2", // misuse of boolean operator
                 "    x += 1",
@@ -1920,7 +1920,7 @@ mod issues {
         assert!(err.description.contains("or"));
 
         let err = Parser::parse_str(
-            &vec![
+            &[
                 "var x = 4",
                 "if 2 or x is 1 and 3", // misuse of boolean operator
                 "    x += 1",
@@ -1939,13 +1939,7 @@ mod issues {
     #[test]
     fn size_minus_1() {
         let _ = env_logger::try_init();
-        Parser::parse_str(
-            &vec![
-                "seq path[] = 1, 2, 3",
-                "path[].remove(path[].size() - 1)", // misuse of boolean operator
-            ]
-            .join("\n"),
-        )
-        .expect("did not parse");
+        Parser::parse_str(&["seq path[] = 1, 2, 3", "path[].remove(path[].size() - 1)"].join("\n"))
+            .expect("did not parse");
     }
 }

@@ -166,7 +166,7 @@ fn external_functions_num_args() {
             "Waited 2 seconds for expectation"
         );
         con.refresh();
-        assert!(matches!(con.result(), None));
+        assert!(con.result().is_none());
     }
 
     loop {
@@ -182,7 +182,7 @@ fn external_functions_num_args() {
             "Waited 2 seconds for expectation"
         );
         con.refresh();
-        assert!(matches!(con.result(), None));
+        assert!(con.result().is_none());
     }
 
     while con.result().is_none() && start.elapsed() < Duration::from_secs(2) {
