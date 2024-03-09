@@ -696,7 +696,7 @@ impl<O: Overseer> Interpreter<O> {
 
     /// Evaluates the passed in syntax tree
     /// :current_scope the stack frame index currently running in
-    /// :restrict_ref optional max frame index referencable
+    /// :restrict_ref optional max frame index referenceable
     ///    (not including >= current_scope, which is always ok)
     fn eval(
         &mut self,
@@ -945,7 +945,7 @@ impl<O: Overseer> Interpreter<O> {
                     match self.stack[idx][&id] {
                         Sequence(ref v, ..) => Ok(v.clone()),
                         ref data => parent_error(format!(
-                            "Invalid sequence referal to non-sequence `{}`",
+                            "Invalid sequence referral to non-sequence `{}`",
                             data.desc(&id)
                         )),
                     }
@@ -1045,7 +1045,7 @@ impl<O: Overseer> Interpreter<O> {
                             }
                         },
                         Some(ref data) => parent_error(format!(
-                            "Invalid sequence referal to non-sequence `{}`",
+                            "Invalid sequence referral to non-sequence `{}`",
                             data.desc(&id)
                         )),
                         None => unreachable!(),
@@ -1241,7 +1241,7 @@ mod issues {
     use super::*;
 
     #[test]
-    fn variable_in_funtion_loop() {
+    fn variable_in_function_loop() {
         assert_program!("fun some_func()";
                         "    var count";
                         "    for i in 1,2,3";

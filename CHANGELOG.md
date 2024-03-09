@@ -1,3 +1,6 @@
+# 0.3.2
+* Fix typo in _"Invalid sequence referral to non-sequence"_ error message.
+
 # 0.3.1
 * Update _strsim_ to `0.11`.
 
