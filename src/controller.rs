@@ -3,7 +3,6 @@ use std::{
     sync::mpsc::{self, RecvTimeoutError, TryRecvError},
     thread,
     time::*,
-    u32, u64,
 };
 
 const STACK_SIZE: usize = 8 * 1024 * 1024;
@@ -42,7 +41,7 @@ impl PhaseKind {
 #[derive(Debug, Clone)]
 enum OverseerUpdate {
     Phase(Phase),
-    FinishedFunCall(Token),
+    FinishedFunCall,
 }
 
 struct ControllerOverseer {
@@ -170,10 +169,8 @@ impl Overseer for ControllerOverseer {
     }
 
     fn oversee_after(&mut self, _stack: &[FxIndexMap<Token, FrameData>], ast: &Ast) {
-        if let Ast::Call(ref id, ..) = *ast {
-            let _ = self
-                .to_controller
-                .send(OverseerUpdate::FinishedFunCall(id.clone()));
+        if let Ast::Call(..) = *ast {
+            let _ = self.to_controller.send(OverseerUpdate::FinishedFunCall);
         }
     }
 
@@ -378,7 +375,7 @@ impl Controller {
                     }
                     self.current_phase = Some(phase);
                 }
-                OverseerUpdate::FinishedFunCall(_) => {
+                OverseerUpdate::FinishedFunCall => {
                     self.fun_call_history.pop();
                 }
             };

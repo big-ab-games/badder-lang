@@ -389,7 +389,7 @@ impl From<(Token, RangeFrom<usize>)> for TokenGuest {
     fn from((token, RangeFrom { start }): (Token, RangeFrom<usize>)) -> Self {
         Self {
             token,
-            scope: start..usize::max_value(),
+            scope: start..usize::MAX,
         }
     }
 }

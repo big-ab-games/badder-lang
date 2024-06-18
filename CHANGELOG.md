@@ -1,3 +1,6 @@
+# 0.3.3
+* Update _rustc-hash_ to `2`.
+
 # 0.3.2
 * Fix typo in _"Invalid sequence referral to non-sequence"_ error message.
 

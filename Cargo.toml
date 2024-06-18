@@ -1,6 +1,6 @@
 [package]
 name = "badder_lang"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Alex Butler <alexheretic@gmail.com>"]
 edition = "2021"
 description = "A specialized programming language built for programming puzzle game Robo Instructus"
@@ -11,7 +11,7 @@ readme="README.md"
 [dependencies]
 indexmap = "2"
 log = "0.4"
-rustc-hash = "1"
+rustc-hash = "2"
 single_value_channel = "1"
 smol_str = "0.2"
 strsim = "0.11"

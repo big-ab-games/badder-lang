@@ -15,11 +15,9 @@ use std::{
     collections::HashSet,
     fmt,
     hash::BuildHasherDefault,
-    i32,
     iter::Iterator,
     mem,
     sync::Arc,
-    usize,
 };
 use strsim::damerau_levenshtein as str_dist;
 
