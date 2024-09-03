@@ -1,3 +1,6 @@
+# 0.4.0
+* Update _smol_str_ to `0.3`.
+
 # 0.3.3
 * Update _rustc-hash_ to `2`.
 
