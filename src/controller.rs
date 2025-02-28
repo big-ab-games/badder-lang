@@ -98,15 +98,16 @@ impl Overseer for ControllerOverseer {
 
         let stack = {
             // kerfuffle to avoid cloning the stack when it hasn't changed
-            if let Some(last) = self.last_stack_copy.take() {
-                if &*last == stack {
-                    self.last_stack_copy = Some(Arc::clone(&last));
-                    last
-                } else {
-                    self.replace_last_stack(stack)
+            match self.last_stack_copy.take() {
+                Some(last) => {
+                    if &*last == stack {
+                        self.last_stack_copy = Some(Arc::clone(&last));
+                        last
+                    } else {
+                        self.replace_last_stack(stack)
+                    }
                 }
-            } else {
-                self.replace_last_stack(stack)
+                _ => self.replace_last_stack(stack),
             }
         };
 
@@ -316,10 +317,9 @@ impl Controller {
             return false;
         }
 
-        if let Some(Phase { time, unpaused, .. }) = self.current_phase {
-            !unpaused && time.elapsed() < self.pause_time
-        } else {
-            false
+        match self.current_phase {
+            Some(Phase { time, unpaused, .. }) => !unpaused && time.elapsed() < self.pause_time,
+            _ => false,
         }
     }
 
