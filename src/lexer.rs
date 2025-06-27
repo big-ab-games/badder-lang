@@ -57,7 +57,7 @@ use crate::lexer::Token::*;
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Num(x) => write!(f, "{}", x),
+            Num(x) => write!(f, "{x}"),
             Pls => write!(f, "+"),
             Sub => write!(f, "-"),
             Mul => write!(f, "*"),
@@ -94,8 +94,8 @@ impl fmt::Debug for Token {
             Comma => write!(f, ","),
             Dot => write!(f, "."),
             Seq => write!(f, "seq"),
-            Indent(i) => write!(f, "'    '*{}", i),
-            Id(ref id) => write!(f, "{}", id),
+            Indent(i) => write!(f, "'    '*{i}"),
+            Id(ref id) => write!(f, "{id}"),
         }
     }
 }
@@ -157,16 +157,16 @@ impl Token {
 
     pub fn long_debug(&self) -> Cow<'static, str> {
         match *self {
-            Num(x) => format!("number `{}`", x).into(),
-            Id(ref id) => format!("id `{}`", id).into(),
+            Num(x) => format!("number `{x}`").into(),
+            Id(ref id) => format!("id `{id}`").into(),
             Pls | Sub | Mul | Div | OpnBrace | ClsBrace | Ass | OpAss(_) | Gt | Lt | GtEq
-            | LtEq => format!("operator `{:?}`", self).into(),
-            Indent(_) => format!("indent {:?}", self).into(),
+            | LtEq => format!("operator `{self:?}`").into(),
+            Indent(_) => format!("indent {self:?}").into(),
             Eol => "end-of-line".into(),
             Eof => "end-of-file".into(),
             Comma => "`,`".into(),
             Dot => "`.`".into(),
-            _ => format!("keyword `{:?}`", self).into(),
+            _ => format!("keyword `{self:?}`").into(),
         }
     }
 
@@ -331,7 +331,7 @@ impl<'a> Lexer<'a> {
             }
 
             return Err(BadderError::at(self.cursor())
-                .describe(Stage::Lexer, format!("Unexpected char: `{}`", c)));
+                .describe(Stage::Lexer, format!("Unexpected char: `{c}`")));
         }
 
         Ok(Eof)
@@ -382,7 +382,7 @@ impl<'a> Lexer<'a> {
 
                 return Err(BadderError::at(src_ref.up_to(self.cursor())).describe(
                     Stage::Lexer,
-                    format!("Invalid indent must be multiple of 4 spaces{}", hint),
+                    format!("Invalid indent must be multiple of 4 spaces{hint}"),
                 ));
             }
             return Ok((Indent(spaces / 4), src_ref.up_to(self.cursor())));
@@ -403,7 +403,7 @@ impl<'a> Lexer<'a> {
             return match number_str.parse() {
                 Ok(n) => Ok((Num(n), src_ref)),
                 Err(e) => Err(BadderError::at(src_ref)
-                    .describe(Stage::Lexer, format!("could not parse number: {}", e))),
+                    .describe(Stage::Lexer, format!("could not parse number: {e}"))),
             };
         }
 
@@ -452,7 +452,7 @@ mod lexer_test {
             (Eof, SourceRef((1, 32), (1, 33))),
         ] {
             let (token, src_ref) = lexer.next_token().unwrap();
-            println!("Token `{:?}`", token);
+            println!("Token `{token:?}`");
             assert_eq!(token, exp_token);
             assert_eq!(src_ref, exp_src_ref);
         }

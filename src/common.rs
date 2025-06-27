@@ -37,11 +37,11 @@ impl fmt::Debug for SourceRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let SourceRef((sl, sc), (el, ec)) = *self;
         if sl == el && sc + 1 == ec {
-            write!(f, "{}:{}", sl, sc)
+            write!(f, "{sl}:{sc}")
         } else if sl == el {
-            write!(f, "{}:[{},{})", sl, sc, ec)
+            write!(f, "{sl}:[{sc},{ec})")
         } else {
-            write!(f, "[{}:{},{}:{})", sl, sc, el, ec)
+            write!(f, "[{sl}:{sc},{el}:{ec})")
         }
     }
 }

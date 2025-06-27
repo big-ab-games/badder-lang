@@ -63,12 +63,12 @@ impl fmt::Debug for Ast {
     /// Safe for large recursive structures
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Ast::Num(ref t, ..) => write!(f, "Num({:?})", t),
-            Ast::BinOp(ref t, ref l, ref r, ..) => write!(f, "BinOp({:?},{:?},{:?})", t, l, r),
-            Ast::LeftUnaryOp(ref t, ref expr, ..) => write!(f, "LeftUnaryOp({:?},{:?})", t, expr),
-            Ast::Assign(ref t, ref expr, ..) => write!(f, "Assign({:?},{:?})", t, expr),
-            Ast::Reassign(ref t, ref expr, ..) => write!(f, "Reassign({:?},{:?})", t, expr),
-            Ast::Refer(ref t, ..) => write!(f, "Refer({:?})", t),
+            Ast::Num(ref t, ..) => write!(f, "Num({t:?})"),
+            Ast::BinOp(ref t, ref l, ref r, ..) => write!(f, "BinOp({t:?},{l:?},{r:?})"),
+            Ast::LeftUnaryOp(ref t, ref expr, ..) => write!(f, "LeftUnaryOp({t:?},{expr:?})"),
+            Ast::Assign(ref t, ref expr, ..) => write!(f, "Assign({t:?},{expr:?})"),
+            Ast::Reassign(ref t, ref expr, ..) => write!(f, "Reassign({t:?},{expr:?})"),
+            Ast::Refer(ref t, ..) => write!(f, "Refer({t:?})"),
             Ast::If(ref bool_expr, _, _, is_else, ..) => {
                 write!(
                     f,
@@ -77,23 +77,23 @@ impl fmt::Debug for Ast {
                     bool_expr
                 )
             }
-            Ast::While(ref bool_expr, ..) => write!(f, "While({:?},_)", bool_expr),
-            Ast::ForIn(None, ref id, ref list, ..) => write!(f, "ForIn({:?}:{:?})", id, list),
+            Ast::While(ref bool_expr, ..) => write!(f, "While({bool_expr:?},_)"),
+            Ast::ForIn(None, ref id, ref list, ..) => write!(f, "ForIn({id:?}:{list:?})"),
             Ast::ForIn(Some(ref idx_id), ref id, ref list, ..) => {
-                write!(f, "ForIn({:?},{:?}:{:?})", idx_id, id, list)
+                write!(f, "ForIn({idx_id:?},{id:?}:{list:?})")
             }
-            Ast::LoopNav(ref t, ..) => write!(f, "LoopNav({:?})", t),
-            Ast::AssignFun(ref t, ref args, ..) => write!(f, "AssignFun({:?},{:?},_)", t, args),
-            Ast::Return(ref val, ..) => write!(f, "Return({:?})", val),
-            Ast::Call(ref t, ref args, ..) => write!(f, "Call({:?},{:?})", t, args),
-            Ast::ReferSeq(ref t, ..) => write!(f, "ReferSeq({:?})", t),
-            Ast::Seq(ref exprs, ..) => write!(f, "Seq({:?})", exprs),
-            Ast::AssignSeq(ref t, ref seq, ..) => write!(f, "AssignSeq({:?},{:?})", t, seq),
-            Ast::ReferSeqIndex(ref t, ref i, ..) => write!(f, "ReferSeqIndex({:?},{:?})", t, i),
+            Ast::LoopNav(ref t, ..) => write!(f, "LoopNav({t:?})"),
+            Ast::AssignFun(ref t, ref args, ..) => write!(f, "AssignFun({t:?},{args:?},_)"),
+            Ast::Return(ref val, ..) => write!(f, "Return({val:?})"),
+            Ast::Call(ref t, ref args, ..) => write!(f, "Call({t:?},{args:?})"),
+            Ast::ReferSeq(ref t, ..) => write!(f, "ReferSeq({t:?})"),
+            Ast::Seq(ref exprs, ..) => write!(f, "Seq({exprs:?})"),
+            Ast::AssignSeq(ref t, ref seq, ..) => write!(f, "AssignSeq({t:?},{seq:?})"),
+            Ast::ReferSeqIndex(ref t, ref i, ..) => write!(f, "ReferSeqIndex({t:?},{i:?})"),
             Ast::ReassignSeqIndex(ref t, ref i, ref val, ..) => {
-                write!(f, "ReassignSeqIndex({:?},{:?},{:?})", t, i, val)
+                write!(f, "ReassignSeqIndex({t:?},{i:?},{val:?})")
             }
-            Ast::Line(ref scope, ..) => write!(f, "Line({},_)", scope),
+            Ast::Line(ref scope, ..) => write!(f, "Line({scope},_)"),
             Ast::LinePair(..) => write!(f, "LinePair(_,_)"),
             Ast::Empty(..) => write!(f, "Empty"),
         }
@@ -189,7 +189,7 @@ impl Ast {
                 format!("While({})\n{}", expr.debug_string(), block.debug_string())
             }
             ref f @ Ast::ForIn(..) => {
-                let mut dbg = format!("{:?}", f);
+                let mut dbg = format!("{f:?}");
                 if let Ast::ForIn(_, _, _, ref block, ..) = *f {
                     dbg = dbg + "\n" + &block.debug_string();
                 }
@@ -198,7 +198,7 @@ impl Ast {
             Ast::AssignFun(ref id, ref args, ref block, ..) => {
                 format!("AssignFun({:?}, {:?})\n{}", id, args, block.debug_string())
             }
-            ref x => format!("{:?}", x),
+            ref x => format!("{x:?}"),
         }
     }
 
@@ -337,9 +337,7 @@ impl Ast {
                             }
                             let fun_call = if args.is_empty() { &*id } else { "..." };
                             write!(msg,
-                                "\n\nTry using a variable `var {id} = {call}`\nthen `{id} is {n} {and_or} {id} is {rhs}`",
-                                id = fun_var_name,
-                                call = fun_call,
+                                "\n\nTry using a variable `var {fun_var_name} = {fun_call}`\nthen `{fun_var_name} is {n} {and_or} {fun_var_name} is {rhs}`",
                             ).unwrap();
                         }
                     }
@@ -460,7 +458,7 @@ impl<'a> Parser<'a> {
 
     fn next_token(&mut self) -> Res<&Token> {
         let (mut token, src_ref) = self.lexer.next_token()?;
-        trace!("{:?} @{:?}", token, src_ref);
+        trace!("{token:?} @{src_ref:?}");
 
         ::std::mem::swap(&mut self.current_token, &mut token);
         self.current_src_ref = src_ref;
@@ -475,7 +473,7 @@ impl<'a> Parser<'a> {
             (&Some(Pls), &Pls) => Some("`++` is not an operator, did you mean `+= 1`?".into()),
             (&Some(Is), &Is) => Some("try using just `is`, without stammering.".into()),
             (&Some(Is), token) if token.is_binary_op() => {
-                Some(format!("try using just `is` or `{:?}`.", token).into())
+                Some(format!("try using just `is` or `{token:?}`.").into())
             }
             _ => None,
         };
@@ -525,14 +523,14 @@ impl<'a> Parser<'a> {
             // eprintln!("Err {:?}: {:?}", self.current_token, backtrace::Backtrace::new());
             let help_message = self
                 .parse_fail_help()
-                .map(|msg| Cow::Owned(format!(", {}", msg)))
+                .map(|msg| Cow::Owned(format!(", {msg}")))
                 .unwrap_or_else(|| {
                     let maybe_expected = types
                         .iter()
                         .filter_map(|t| match t {
                             &Num(_) => Some(Cow::Borrowed("0-9")),
                             &Eol | &Eof => None,
-                            token => Some(format!("{:?}", token).into()),
+                            token => Some(format!("{token:?}").into()),
                         })
                         .collect::<Vec<_>>();
 
@@ -558,7 +556,7 @@ impl<'a> Parser<'a> {
                     self.current_token.long_debug(),
                     self.previous_token
                         .as_ref()
-                        .map(|t| Cow::Owned(format!(" after `{:?}`", t)))
+                        .map(|t| Cow::Owned(format!(" after `{t:?}`")))
                         .unwrap_or_else(|| "".into()),
                     help_message,
                 ),
@@ -1081,7 +1079,7 @@ impl<'a> Parser<'a> {
                             return Err(BadderError::at(src.up_to_end_of(self.current_src_ref))
                                 .describe(
                                     Stage::Parser,
-                                    format!("expecting seq index ref id[expr], got {:?}", out),
+                                    format!("expecting seq index ref id[expr], got {out:?}"),
                                 ));
                         }
                     }
@@ -1158,10 +1156,7 @@ impl<'a> Parser<'a> {
                 };
                 return Err(BadderError::at(indent_src_ref).describe(
                     Stage::Parser,
-                    format!(
-                        "Incorrect indentation, expected {} indent(s) {}",
-                        expected_scope, hint,
-                    ),
+                    format!("Incorrect indentation, expected {expected_scope} indent(s) {hint}",),
                 ));
             }
         }
@@ -1573,7 +1568,7 @@ mod parser_test {
         )
         .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert!(err.description.contains("double"));
         assert_eq!(err.src, SourceRef((1, 5), (1, 11)));
@@ -1646,7 +1641,7 @@ mod helpful_error {
         )
         .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(
@@ -1668,7 +1663,7 @@ mod helpful_error {
         )
         .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(
@@ -1683,7 +1678,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["var x", "x++"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((2, 3), (2, 4)));
         assert!(
@@ -1698,7 +1693,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["12 is > 11"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(
@@ -1713,7 +1708,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["12 not > 11"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
         assert!(
@@ -1728,7 +1723,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["12 not <= 11"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 4), (1, 7)));
         assert!(err.description.contains("`>`"), "error did not suggest `>`");
@@ -1740,7 +1735,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["if 12 = 11", "    0"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(
@@ -1755,7 +1750,7 @@ mod helpful_error {
 
         let err = Parser::parse_str(&["if 12 == 11", "    0"].join("\n")).expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((1, 7), (1, 8)));
         assert!(
@@ -1771,7 +1766,7 @@ mod helpful_error {
         let err = Parser::parse_str(&["var scan = 1", "if scan is 1 or 2", "    0"].join("\n"))
             .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((2, 4), (2, 18)));
         assert!(err.description.contains("`scan is 1 or scan is 2`"));
@@ -1786,7 +1781,7 @@ mod helpful_error {
         )
         .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((3, 4), (3, 23)));
         assert!(err.description.contains("var do_scan = do_scan()"));
@@ -1808,7 +1803,7 @@ mod helpful_error {
         )
         .expect_err("parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((3, 4), (3, 24)));
         assert!(err.description.contains("var do_scan = "));
@@ -1876,7 +1871,7 @@ mod issues {
         let err = Parser::parse_str(&["var x", "    x = 1", "        x += 12"].join("\n"))
             .expect_err("did not fail parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((2, 1), (2, 5)));
         assert!(
@@ -1891,7 +1886,7 @@ mod issues {
         let err = Parser::parse_str(&["var x", "if x is 0", "            x += 12"].join("\n"))
             .expect_err("did not fail parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((3, 1), (3, 13)));
         assert!(
@@ -1914,7 +1909,7 @@ mod issues {
         )
         .expect_err("did not fail parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((2, 4), (2, 15)));
         assert!(err.description.contains("or"));
@@ -1930,7 +1925,7 @@ mod issues {
         )
         .expect_err("did not fail parse");
 
-        println!("Got error: {:?}", err);
+        println!("Got error: {err:?}");
 
         assert_eq!(err.src, SourceRef((2, 9), (2, 21)));
         assert!(err.description.contains("and"));

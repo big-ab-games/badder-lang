@@ -184,10 +184,7 @@ impl Overseer for ControllerOverseer {
         id: Token,
         args: Vec<(Int, IntFlag)>,
     ) -> Result<(Int, IntFlag), String> {
-        debug!(
-            "ControllerOverseer awaiting answer: {:?}, args {:?}",
-            id, args
-        );
+        debug!("ControllerOverseer awaiting answer: {id:?}, args {args:?}");
         self.external_function_call
             .send(ExternalCall { id, args })
             .expect("send");
@@ -196,7 +193,7 @@ impl Overseer for ControllerOverseer {
         match self.external_function_answer.recv() {
             Ok(result) => result,
             Err(err) => {
-                debug!("ControllerOverseer cancelling: {:?}", err);
+                debug!("ControllerOverseer cancelling: {err:?}");
                 Err("cancelled".into())
             }
         }
@@ -414,10 +411,7 @@ impl Controller {
     pub fn answer_external_call(&mut self, result: Result<(Int, IntFlag), String>) {
         self.current_external_call = None;
         if let Err(err) = self.external_function_answer.send(result) {
-            warn!(
-                "Comms failure with badder runtime when answering external call: {}",
-                err
-            );
+            warn!("Comms failure with badder runtime when answering external call: {err}");
         }
     }
 

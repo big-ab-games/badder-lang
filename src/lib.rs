@@ -63,12 +63,12 @@ pub enum FrameData {
 impl fmt::Debug for FrameData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Value(x, ..) => write!(f, "Value({})", x),
+            Value(x, ..) => write!(f, "Value({x})"),
             Callable(..) => write!(f, "Callable"),
             BuiltinCallable(..) => write!(f, "BuiltinCallable"),
             ExternalCallable => write!(f, "ExternalCallable"),
-            Sequence(ref vals, ..) => write!(f, "Sequence({:?})", vals),
-            Ref(i, ref t) => write!(f, "Ref([{}]:{:?})", i, t),
+            Sequence(ref vals, ..) => write!(f, "Sequence({vals:?})"),
+            Ref(i, ref t) => write!(f, "Ref([{i}]:{t:?})"),
             LoopMarker => write!(f, "LoopMarker"),
         }
     }
@@ -77,16 +77,16 @@ impl fmt::Debug for FrameData {
 impl FrameData {
     fn desc(&self, id: &Token) -> String {
         match *self {
-            Value(..) => format!("var {:?}", id),
+            Value(..) => format!("var {id:?}"),
             Callable(ref args, ..) => format!(
                 "{:?}({})",
                 id,
                 args.iter()
-                    .map(|a| format!("{:?}", a))
+                    .map(|a| format!("{a:?}"))
                     .fold(String::new(), |all, n| all + &n)
             ),
-            Sequence(..) | BuiltinCallable(..) => format!("{:?}", id),
-            Ref(..) => format!("ref->{:?}", id),
+            Sequence(..) | BuiltinCallable(..) => format!("{id:?}"),
+            Ref(..) => format!("ref->{id:?}"),
             _ => "_".into(),
         }
     }
@@ -189,7 +189,7 @@ impl Overseer for NoOverseer {
         id: Token,
         _: Vec<(Int, IntFlag)>,
     ) -> Result<(Int, IntFlag), String> {
-        Err(format!("Unknown external function {:?}", id))
+        Err(format!("Unknown external function {id:?}"))
     }
 }
 
@@ -252,12 +252,11 @@ impl<O: Overseer> Interpreter<O> {
             .flat_map(|(_, m)| m.keys())
             .collect();
         if keys.is_empty() {
-            format!("id `{:?}` not found in scope", id)
+            format!("id `{id:?}` not found in scope")
         } else {
             assert!(
                 !keys.contains(id),
-                "!keys.contains(id): `{:?}` is available",
-                id
+                "!keys.contains(id): `{id:?}` is available"
             );
             let mut available: Vec<_> = keys
                 .iter()
@@ -272,10 +271,7 @@ impl<O: Overseer> Interpreter<O> {
                 available.sort_by_key(|known| str_dist(id, known));
             }
             let available = available.join(", ");
-            format!(
-                "id `{:?}` not found in scope, available: {{{}}}",
-                id, available
-            )
+            format!("id `{id:?}` not found in scope, available: {{{available}}}")
         }
     }
 
@@ -368,7 +364,7 @@ impl<O: Overseer> Interpreter<O> {
             Lt => Ok(bool_to_num(eval!(left)? < eval!(right)?)),
             GtEq => Ok(bool_to_num(eval!(left)? >= eval!(right)?)),
             LtEq => Ok(bool_to_num(eval!(left)? <= eval!(right)?)),
-            _ => parent_error(format!("Unexpected BinOp token `{:?}`", token)),
+            _ => parent_error(format!("Unexpected BinOp token `{token:?}`")),
         }
     }
 
@@ -531,10 +527,7 @@ impl<O: Overseer> Interpreter<O> {
                         (arg_ids.clone(), Arc::clone(block), src)
                     }
                     _ => {
-                        return parent_error(format!(
-                            "Invalid reference to non callable `{:?}`",
-                            id
-                        ));
+                        return parent_error(format!("Invalid reference to non callable `{id:?}`"));
                     }
                 }
             };
@@ -614,13 +607,11 @@ impl<O: Overseer> Interpreter<O> {
             let index = convert_signed_index(actual_index, seq_len);
             if seq_len == 0 {
                 return parent_error(format!(
-                    "Invalid sequence index {} not in empty sequence",
-                    actual_index
+                    "Invalid sequence index {actual_index} not in empty sequence"
                 ));
             } else if seq_len <= index {
                 return parent_error(format!(
-                    "Invalid sequence index {} not in 0..{} (or negative)",
-                    index, seq_len
+                    "Invalid sequence index {index} not in 0..{seq_len} (or negative)"
                 ));
             }
             Ok(match self.stack[idx][&seq_id] {
@@ -670,8 +661,7 @@ impl<O: Overseer> Interpreter<O> {
             let index = convert_signed_index(eval!(index_expr)?, seq_len);
             if seq_len <= index {
                 return parent_error(format!(
-                    "Invalid sequence index {} not in 0..{} (or negative)",
-                    index, seq_len
+                    "Invalid sequence index {index} not in 0..{seq_len} (or negative)"
                 ));
             }
             let new_val = eval!(expr; with_flag)?;
@@ -766,7 +756,7 @@ impl<O: Overseer> Interpreter<O> {
                 if let Some(idx) = highest_frame_idx!(id) {
                     match self.stack[idx][id] {
                         Value(v, flag, ..) => Err(InterpreterUpFlow::Flagged(v, flag)),
-                        _ => parent_error(format!("Invalid reference to non number `{:?}`", id)),
+                        _ => parent_error(format!("Invalid reference to non number `{id:?}`")),
                     }
                 } else {
                     parent_error(self.unknown_id_err(id, stack_key))
@@ -803,10 +793,10 @@ impl<O: Overseer> Interpreter<O> {
                     match *token {
                         Break => Err(LoopBreak),
                         Continue => Err(LoopContinue),
-                        _ => parent_error(format!("Unknown loop nav `{:?}`", token)),
+                        _ => parent_error(format!("Unknown loop nav `{token:?}`")),
                     }
                 } else {
-                    parent_error(format!("Invalid use of loop nav `{:?}`", token))
+                    parent_error(format!("Invalid use of loop nav `{token:?}`"))
                 }
             }
             Ast::AssignFun(ref id, ref args, ref block, src) => {
@@ -879,7 +869,7 @@ impl<O: Overseer> Interpreter<O> {
                 eval!(next)
             }
             Ast::Empty(..) => Ok(0),
-            _ => parent_error(format!("Unexpected syntax {:?}", ast)),
+            _ => parent_error(format!("Unexpected syntax {ast:?}")),
         };
 
         self.overseer.oversee_after(&self.stack, ast);
@@ -944,7 +934,7 @@ impl<O: Overseer> Interpreter<O> {
                     parent_error(self.unknown_id_err(id, stack_key))
                 }
             }
-            _ => parent_error(format!("Unexpected Seq syntax {:?}", list)),
+            _ => parent_error(format!("Unexpected Seq syntax {list:?}")),
         };
 
         match result {
@@ -1019,8 +1009,7 @@ impl<O: Overseer> Interpreter<O> {
                                 let index = convert_signed_index(arg1.unwrap().0, v.len());
                                 if v.is_empty() {
                                     return parent_error(format!(
-                                        "Invalid sequence index {} not in empty sequence",
-                                        index
+                                        "Invalid sequence index {index} not in empty sequence"
                                     ));
                                 } else if v.len() <= index {
                                     return parent_error(format!(
@@ -1080,7 +1069,7 @@ impl<O: Overseer> Interpreter<O> {
         match self.eval(ast, 0, StackKey::default()).ignore_flag() {
             Ok(x) => Ok(x),
             Err(Error(desc)) => Err(desc),
-            Err(err) => panic!("{:?}", err),
+            Err(err) => panic!("{err:?}"),
         }
     }
 }
@@ -1143,7 +1132,7 @@ mod util {
         Err(BadderError::at(SourceRef((0, 0), (0, 0))) // TODO
             .describe(
                 Stage::Interpreter,
-                format!("Program did not return within {:?}", timeout),
+                format!("Program did not return within {timeout:?}"),
             ))
     }
 
@@ -1169,7 +1158,7 @@ mod util {
         if out.is_ok() {
             print_program_debug(code).unwrap();
         }
-        assert!(out.is_err(), "Unexpected {:?}", out);
+        assert!(out.is_err(), "Unexpected {out:?}");
         if let Err(reason) = out {
             return reason;
         }
