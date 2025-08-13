@@ -203,10 +203,10 @@ impl Ast {
     }
 
     fn is_else_line(&self) -> bool {
-        if let Ast::Line(_, ref ast, ..) = *self {
-            if let Ast::If(_, _, _, is_else, ..) = **ast {
-                return is_else;
-            }
+        if let Ast::Line(_, ref ast, ..) = *self
+            && let Ast::If(_, _, _, is_else, ..) = **ast
+        {
+            return is_else;
         }
         false
     }
@@ -273,10 +273,10 @@ impl Ast {
     }
 
     fn extract_ref_is_num(&self) -> Option<(SmolStr, i32)> {
-        if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
-            if let (Some(id), Some(n)) = (left.extract_ref(), right.extract_num()) {
-                return Some((id, n));
-            }
+        if let Ast::BinOp(Is, ref left, ref right, ..) = *self
+            && let (Some(id), Some(n)) = (left.extract_ref(), right.extract_num())
+        {
+            return Some((id, n));
         }
         None
     }
@@ -289,10 +289,10 @@ impl Ast {
     }
 
     fn extract_fun_call_is_num(&self) -> Option<((SmolStr, &[Ast]), i32)> {
-        if let Ast::BinOp(Is, ref left, ref right, ..) = *self {
-            if let (Some(fun), Some(n)) = (left.extract_fun_call(), right.extract_num()) {
-                return Some((fun, n));
-            }
+        if let Ast::BinOp(Is, ref left, ref right, ..) = *self
+            && let (Some(fun), Some(n)) = (left.extract_fun_call(), right.extract_num())
+        {
+            return Some((fun, n));
         }
         None
     }
@@ -939,18 +939,18 @@ impl<'a> Parser<'a> {
             return Ok(Ok(Some(list)));
         }
         let src = self.current_src_ref;
-        if let Id(..) = self.current_token {
-            if self.lexer.peek()? == Square && (edge_cases || self.lexer.peekn(2)? != Dot) {
-                let id = self.consume(ID_TOKEN)?;
-                self.consume(Square)?;
-                let refer =
-                    Ast::ReferSeq(id_to_seq_id(&id), src.up_to_end_of(self.current_src_ref));
-                return if self.current_token == Dot {
-                    Ok(Err(ListParseEdgeCase::DotCall(refer)))
-                } else {
-                    Ok(Ok(Some(refer)))
-                };
-            }
+        if let Id(..) = self.current_token
+            && self.lexer.peek()? == Square
+            && (edge_cases || self.lexer.peekn(2)? != Dot)
+        {
+            let id = self.consume(ID_TOKEN)?;
+            self.consume(Square)?;
+            let refer = Ast::ReferSeq(id_to_seq_id(&id), src.up_to_end_of(self.current_src_ref));
+            return if self.current_token == Dot {
+                Ok(Err(ListParseEdgeCase::DotCall(refer)))
+            } else {
+                Ok(Ok(Some(refer)))
+            };
         }
         Ok(Ok(None))
     }
@@ -1146,19 +1146,19 @@ impl<'a> Parser<'a> {
     /// Checks a line as the expected scope
     #[inline]
     fn check_line_has_scope(ast: &Ast, expected_scope: usize) -> Res<()> {
-        if let Ast::Line(scope, _, src) = *ast {
-            if scope != expected_scope {
-                let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
-                let hint = if expected_scope > scope {
-                    format!("try adding {}", expected_scope - scope)
-                } else {
-                    format!("try removing {}", scope - expected_scope)
-                };
-                return Err(BadderError::at(indent_src_ref).describe(
-                    Stage::Parser,
-                    format!("Incorrect indentation, expected {expected_scope} indent(s) {hint}",),
-                ));
-            }
+        if let Ast::Line(scope, _, src) = *ast
+            && scope != expected_scope
+        {
+            let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+            let hint = if expected_scope > scope {
+                format!("try adding {}", expected_scope - scope)
+            } else {
+                format!("try removing {}", scope - expected_scope)
+            };
+            return Err(BadderError::at(indent_src_ref).describe(
+                Stage::Parser,
+                format!("Incorrect indentation, expected {expected_scope} indent(s) {hint}",),
+            ));
         }
         Ok(())
     }
@@ -1169,29 +1169,28 @@ impl<'a> Parser<'a> {
     fn check_scope_change(line1: &Ast, line2: &Ast) -> Res<()> {
         if let (&Ast::Line(prev_scope, ref prev_expr, ..), &Ast::Line(scope, _, src)) =
             (line1, line2)
+            && scope > prev_scope
         {
-            if scope > prev_scope {
-                match **prev_expr {
-                    Ast::If(..) | Ast::While(..) | Ast::ForIn(..) | Ast::AssignFun(..)
-                        if scope == prev_scope + 1 => {}
+            match **prev_expr {
+                Ast::If(..) | Ast::While(..) | Ast::ForIn(..) | Ast::AssignFun(..)
+                    if scope == prev_scope + 1 => {}
 
-                    Ast::If(..) | Ast::While(..) | Ast::ForIn(..) | Ast::AssignFun(..) => {
-                        let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
-                        return Err(BadderError::at(indent_src_ref).describe(
-                            Stage::Parser,
-                            "Incorrect indentation, exactly +1 indent must used after a line \
+                Ast::If(..) | Ast::While(..) | Ast::ForIn(..) | Ast::AssignFun(..) => {
+                    let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+                    return Err(BadderError::at(indent_src_ref).describe(
+                        Stage::Parser,
+                        "Incorrect indentation, exactly +1 indent must used after a line \
                                 starting with `if,loop,for,while,fun`",
-                        ));
-                    }
+                    ));
+                }
 
-                    _ => {
-                        let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
-                        return Err(BadderError::at(indent_src_ref).describe(
-                            Stage::Parser,
-                            "Incorrect indentation, +1 indent can only occur after a line \
+                _ => {
+                    let indent_src_ref = src.with_char_end(((src.0).0, scope * 4 + 1));
+                    return Err(BadderError::at(indent_src_ref).describe(
+                        Stage::Parser,
+                        "Incorrect indentation, +1 indent can only occur after a line \
                                 starting with `if,loop,for,while,fun`",
-                        ));
-                    }
+                    ));
                 }
             }
         }

@@ -307,25 +307,25 @@ impl<'a> Lexer<'a> {
             }
 
             if let Some(token) = Token::parse(c) {
-                if token == Gt {
-                    if let Some(&'=') = self.chars.peek() {
-                        return Ok(GtEq);
-                    }
+                if token == Gt
+                    && let Some(&'=') = self.chars.peek()
+                {
+                    return Ok(GtEq);
                 }
-                if token == Lt {
-                    if let Some(&'=') = self.chars.peek() {
-                        return Ok(LtEq);
-                    }
+                if token == Lt
+                    && let Some(&'=') = self.chars.peek()
+                {
+                    return Ok(LtEq);
                 }
-                if token.is_valid_for_op_ass() {
-                    if let Some(&'=') = self.chars.peek() {
-                        return Ok(OpAss(token.into()));
-                    }
+                if token.is_valid_for_op_ass()
+                    && let Some(&'=') = self.chars.peek()
+                {
+                    return Ok(OpAss(token.into()));
                 }
-                if token == OpnSqr {
-                    if let Some(&']') = self.chars.peek() {
-                        return Ok(Square);
-                    }
+                if token == OpnSqr
+                    && let Some(&']') = self.chars.peek()
+                {
+                    return Ok(Square);
                 }
                 return Ok(token);
             }
