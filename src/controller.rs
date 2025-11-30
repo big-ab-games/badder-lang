@@ -13,7 +13,7 @@ pub struct Phase {
     pub id: u64,
     pub time: Instant,
     pub src: SourceRef,
-    /// most recent function call ref relavant to this Ast, empty => top level code
+    /// most recent function call ref relevant to this Ast, empty => top level code
     pub called_from: Vec<SourceRef>,
     kind: PhaseKind,
     unpaused: bool,
